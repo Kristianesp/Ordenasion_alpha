@@ -62,7 +62,6 @@ class FileOrganizerGUI(QMainWindow):
         self.setup_shortcuts()
         self.setup_state_observers()  # ✅ NUEVO: Observadores del estado
         self.apply_saved_interface_settings()
-        self.load_column_settings()
     
     def _init_disk_manager(self):
         """Inicializa DiskManager usando el estado centralizado"""
@@ -354,15 +353,23 @@ class FileOrganizerGUI(QMainWindow):
         # Los estilos se aplican automáticamente via themes.py
         header = self.movements_table.horizontalHeader()
         
-        # ✅ NUEVO: Permitir redimensionamiento manual de TODAS las columnas
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)  # Checkbox
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)  # Elemento
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)  # Destino
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)  # Porcentaje
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)  # Archivos
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive)  # Tamaño
+        # ✅ PASO 1: PRIMERO establecer los anchos ANTES de configurar ResizeMode
+        self.movements_table.setColumnWidth(0, 50)     # ☑️ Checkbox
+        self.movements_table.setColumnWidth(1, 900)    # 📂 Elemento - 900px
+        self.movements_table.setColumnWidth(2, 200)    # 📁 Destino - 200px
+        self.movements_table.setColumnWidth(3, 200)    # 📊 % - 200px
+        self.movements_table.setColumnWidth(4, 200)    # 📄 Archivos - 200px
+        self.movements_table.setColumnWidth(5, 200)    # 💾 Tamaño - 200px
         
-        # ✅ NUEVO: Habilitar ordenamiento por columnas
+        # ✅ PASO 2: DESPUÉS configurar ResizeMode (Interactive permite que el usuario ajuste)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)  # Checkbox - ajustable
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)  # Elemento - ajustable
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)  # Destino - ajustable
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)  # Porcentaje - ajustable
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)  # Archivos - ajustable
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive)  # Tamaño - ajustable
+        
+        # ✅ Habilitar ordenamiento por columnas
         header.setSortIndicatorShown(True)
         header.setSectionsClickable(True)
         header.sectionClicked.connect(self.on_header_clicked)
@@ -375,24 +382,8 @@ class FileOrganizerGUI(QMainWindow):
                          "📄 Archivos: Número de archivos contenidos\n"
                          "💾 Tamaño: Tamaño total del elemento")
         
-        # ✅ NUEVO: Establecer anchos por defecto
-        self.default_column_widths = {
-            0: 50,   # Checkbox
-            1: 300,  # Elemento
-            2: 200,  # Destino
-            3: 80,   # Porcentaje
-            4: 80,   # Archivos
-            5: 100   # Tamaño
-        }
-        
-        # Aplicar anchos por defecto
-        for column, width in self.default_column_widths.items():
-            self.movements_table.setColumnWidth(column, width)
-        
-        # ✅ NUEVO: Conectar señales para persistencia
-        header.sectionResized.connect(self.on_column_resized)
+        # Permitir que el usuario reordene columnas si lo desea
         header.setSectionsMovable(True)
-        header.sectionMoved.connect(self.on_column_moved)
         
         # Habilitar selección por filas
         self.movements_table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
@@ -406,17 +397,6 @@ class FileOrganizerGUI(QMainWindow):
         
         organize_layout.addWidget(self.movements_table)
         
-        # ✅ NUEVO: Botones de control de tabla
-        table_controls_layout = QHBoxLayout()
-        
-        self.reset_columns_btn = QPushButton("📏 Resetear Columnas")
-        self.reset_columns_btn.setToolTip("Restaura el ancho y orden de las columnas a valores por defecto")
-        self.reset_columns_btn.clicked.connect(self.reset_column_settings)
-        table_controls_layout.addWidget(self.reset_columns_btn)
-        
-        table_controls_layout.addStretch()  # Empujar hacia la derecha
-        
-        organize_layout.addLayout(table_controls_layout)
         
         # Botón principal de organizar (prominente) - DISEÑO PROFESIONAL
         organize_btn_layout = QHBoxLayout()
@@ -1011,6 +991,15 @@ class FileOrganizerGUI(QMainWindow):
         # Actualizar modelo con nuevos datos (virtualización automática)
         self.movements_model.update_data(model_data)
         
+        # ✅ CRÍTICO: Re-aplicar anchos de columna después de actualizar el modelo
+        # El resetModel() puede cambiar los anchos, así que los re-aplicamos
+        self.movements_table.setColumnWidth(0, 50)     # ☑️ Checkbox
+        self.movements_table.setColumnWidth(1, 900)    # 📂 Elemento - 900px
+        self.movements_table.setColumnWidth(2, 200)    # 📁 Destino - 200px
+        self.movements_table.setColumnWidth(3, 200)    # 📊 % - 200px
+        self.movements_table.setColumnWidth(4, 200)    # 📄 Archivos - 200px
+        self.movements_table.setColumnWidth(5, 200)    # 💾 Tamaño - 200px
+        
         # Log de performance
         self.log_message(f"✅ Tabla virtualizada poblada con {len(model_data)} elementos (performance óptima)")
         
@@ -1374,16 +1363,28 @@ class FileOrganizerGUI(QMainWindow):
             self.setPalette(palette)
             self.setStyleSheet(css_styles)
             
-            # PASO 3: Aplicar a todos los widgets hijos
-            for widget in self.findChildren(QWidget):
+            # PASO 3: Aplicar a todos los widgets hijos (optimizado - sin duplicados)
+            processed_widgets = set()  # Para evitar procesar el mismo widget dos veces
+            
+            def apply_to_widget_safe(widget):
+                """Aplica tema a un widget de forma segura"""
+                if widget in processed_widgets:
+                    return
+                processed_widgets.add(widget)
+                
                 try:
                     widget.setPalette(palette)
                     # Solo aplicar CSS si no tiene estilos personalizados con !important
                     current_style = widget.styleSheet() or ""
                     if not current_style or '!important' not in current_style:
                         widget.setStyleSheet(css_styles)
+                    widget.update()
                 except:
                     pass
+            
+            # Aplicar a todos los widgets hijos de la ventana principal (sin recursión duplicada)
+            for widget in self.findChildren(QWidget):
+                apply_to_widget_safe(widget)
             
             # PASO 4: Aplicar estilos a tarjetas y elementos especiales
             self.apply_stats_cards_styles(theme_name)
@@ -1393,12 +1394,8 @@ class FileOrganizerGUI(QMainWindow):
                 if isinstance(widget, QDialog) and widget.isVisible():
                     try:
                         if hasattr(widget, 'apply_current_theme_to_self'):
-                            # Para ConfigDialog, aplicar inmediatamente para que se vea el cambio
-                            if isinstance(widget, ConfigDialog):
-                                widget.apply_current_theme_to_self()
-                            else:
-                                # Para otros diálogos, usar QTimer
-                                QTimer.singleShot(100, widget.apply_current_theme_to_self)
+                            # Aplicar inmediatamente a todos los diálogos
+                            widget.apply_current_theme_to_self()
                         else:
                             # Fallback: aplicar tema básico
                             widget.setPalette(palette)
@@ -1434,6 +1431,9 @@ class FileOrganizerGUI(QMainWindow):
             
             # PASO 7: Refrescar todas las tablas y widgets que puedan tener datos visuales
             QTimer.singleShot(200, lambda: self._refresh_all_tables_after_theme())
+            
+            # PASO 8: Re-aplicar anchos de columna de la tabla principal después del tema
+            QTimer.singleShot(250, lambda: self._reapply_table_column_widths())
             
             # Actualización final - UNA SOLA VEZ
             self.update()
@@ -1583,7 +1583,7 @@ class FileOrganizerGUI(QMainWindow):
             if app:
                 for widget in app.allWidgets():
                     if isinstance(widget, ConfigDialog) and widget.isVisible():
-                        # Actualizar inmediatamente sin QTimer para que sea instantáneo
+                        # Actualizar INMEDIATAMENTE sin delay
                         widget.apply_current_theme_to_self()
             
             self.log_message(f"✅ Configuración de interfaz aplicada: {font_size}px, {theme}")
@@ -1621,9 +1621,16 @@ class FileOrganizerGUI(QMainWindow):
             
             # Refrescar tabla de duplicados si existe
             if hasattr(self, 'duplicates_dashboard') and self.duplicates_dashboard:
-                if hasattr(self.duplicates_dashboard, 'duplicates_table') and self.duplicates_dashboard.duplicates_table:
-                    self.duplicates_dashboard.duplicates_table.update()
-                    self.duplicates_dashboard.duplicates_table.repaint()
+                try:
+                    # El tema ya se aplicó en el paso 3, solo refrescar la tabla
+                    if hasattr(self.duplicates_dashboard, 'duplicates_table') and self.duplicates_dashboard.duplicates_table:
+                        self.duplicates_dashboard.duplicates_table.update()
+                        self.duplicates_dashboard.duplicates_table.repaint()
+                    # Aplicar estilos al botón de escaneo si existe
+                    if hasattr(self.duplicates_dashboard, 'apply_scan_button_style'):
+                        self.duplicates_dashboard.apply_scan_button_style()
+                except Exception as e:
+                    self.log_message(f"⚠️ Error refrescando DuplicatesDashboard: {str(e)}")
             
             # Refrescar todas las tablas encontradas
             for widget in self.findChildren(QTableWidget):
@@ -1644,6 +1651,22 @@ class FileOrganizerGUI(QMainWindow):
             self.repaint()
         except Exception as e:
             self.log_message(f"⚠️ Error refrescando tablas después del tema: {str(e)}")
+    
+    def _reapply_table_column_widths(self):
+        """Re-aplica los anchos de columna de la tabla principal después de cambiar el tema"""
+        try:
+            if hasattr(self, 'movements_table') and self.movements_table:
+                # Re-aplicar anchos fijos
+                self.movements_table.setColumnWidth(0, 50)     # ☑️ Checkbox
+                self.movements_table.setColumnWidth(1, 900)    # 📂 Elemento - 900px
+                self.movements_table.setColumnWidth(2, 200)    # 📁 Destino - 200px
+                self.movements_table.setColumnWidth(3, 200)    # 📊 % - 200px
+                self.movements_table.setColumnWidth(4, 200)    # 📄 Archivos - 200px
+                self.movements_table.setColumnWidth(5, 200)    # 💾 Tamaño - 200px
+                
+                self.log_message("📏 Anchos de columna re-aplicados después del cambio de tema")
+        except Exception as e:
+            self.log_message(f"⚠️ Error re-aplicando anchos de columna: {str(e)}")
     
     def refresh_open_dialogs(self):
         """Actualiza todos los diálogos abiertos con el tema actual"""
@@ -1971,95 +1994,6 @@ class FileOrganizerGUI(QMainWindow):
             
             self.log_message(f"📊 Ordenando por columna {logical_index} ({'descendente' if new_order == Qt.SortOrder.DescendingOrder else 'ascendente'})")
     
-    def on_column_resized(self, logical_index, old_size, new_size):
-        """Se ejecuta cuando el usuario redimensiona una columna"""
-        self.log_message(f"📏 Columna {logical_index} redimensionada: {old_size}px → {new_size}px")
-        self.save_column_settings()
-    
-    def on_column_moved(self, logical_index, old_visual_index, new_visual_index):
-        """Se ejecuta cuando el usuario reordena columnas"""
-        self.log_message(f"🔄 Columna movida desde posición {old_visual_index} → {new_visual_index}")
-        self.save_column_settings()
-    
-    def save_column_settings(self):
-        """Guarda el estado actual de las columnas"""
-        try:
-            header = self.movements_table.horizontalHeader()
-            
-            # Guardar anchos de columnas
-            column_widths = {}
-            for i in range(self.movements_table.model().columnCount()):
-                column_widths[str(i)] = header.sectionSize(i)
-            
-            # Guardar orden visual de columnas
-            column_order = []
-            for i in range(self.movements_table.model().columnCount()):
-                column_order.append(header.visualIndex(i))
-            
-            # Guardar en configuración persistente
-            self.settings.setValue("column_widths", column_widths)
-            self.settings.setValue("column_order", column_order)
-            self.settings.sync()  # Forzar guardado inmediato
-            
-            self.log_message("💾 Estado de columnas guardado automáticamente")
-            
-        except Exception as e:
-            self.log_message(f"❌ Error guardando estado de columnas: {str(e)}")
-    
-    def load_column_settings(self):
-        """Carga el estado guardado de las columnas"""
-        try:
-            header = self.movements_table.horizontalHeader()
-            
-            # Cargar anchos de columnas
-            saved_widths = self.settings.value("column_widths", {})
-            if saved_widths:
-                for column_str, width in saved_widths.items():
-                    try:
-                        column_index = int(column_str)
-                        if 0 <= column_index < self.movements_table.model().columnCount():
-                            self.movements_table.setColumnWidth(column_index, int(width))
-                    except (ValueError, TypeError):
-                        continue
-            
-            # Cargar orden de columnas
-            saved_order = self.settings.value("column_order", [])
-            if saved_order and len(saved_order) == self.movements_table.model().columnCount():
-                try:
-                    for logical_index, visual_index in enumerate(saved_order):
-                        header.moveSection(header.visualIndex(logical_index), int(visual_index))
-                except (ValueError, TypeError):
-                    pass
-            
-            if saved_widths or saved_order:
-                self.log_message("📋 Estado de columnas restaurado desde configuración anterior")
-            else:
-                self.log_message("📋 Usando configuración de columnas por defecto")
-                
-        except Exception as e:
-            self.log_message(f"⚠️ Error cargando estado de columnas: {str(e)} - Usando valores por defecto")
-    
-    def reset_column_settings(self):
-        """Restaura las columnas a su configuración por defecto"""
-        try:
-            # Aplicar anchos por defecto
-            for column, width in self.default_column_widths.items():
-                self.movements_table.setColumnWidth(column, width)
-            
-            # Restaurar orden original
-            header = self.movements_table.horizontalHeader()
-            for i in range(self.movements_table.model().columnCount()):
-                header.moveSection(header.visualIndex(i), i)
-            
-            # Limpiar configuración guardada
-            self.settings.remove("column_widths")
-            self.settings.remove("column_order")
-            self.settings.sync()
-            
-            self.log_message("🔄 Columnas restauradas a configuración por defecto")
-            
-        except Exception as e:
-            self.log_message(f"❌ Error restaurando columnas: {str(e)}")
     
     def closeEvent(self, event):
         """Maneja el cierre de la ventana con limpieza completa"""
@@ -2077,9 +2011,6 @@ class FileOrganizerGUI(QMainWindow):
                     except:
                         pass
                 self._active_workers.clear()
-            
-            # Guardar configuración de columnas
-            self.save_column_settings()
             
             # Limpiar estado centralizado
             app_state.cleanup()

@@ -496,13 +496,24 @@ class ConfigDialog(QDialog):
             from PyQt6.QtCore import QTimer
             QTimer.singleShot(50, self.apply_current_theme_to_self)
             
-            QMessageBox.information(
-                self,
-                "✅ Cambios Aplicados INMEDIATAMENTE",
+            # Crear el mensaje con el tema aplicado
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("✅ Cambios Aplicados INMEDIATAMENTE")
+            msg_box.setText(
                 f"🎨 Tema: {theme_text}\n"
                 f"📝 Tamaño: {self.get_font_size_description(font_size)}\n\n"
                 f"Los cambios se han aplicado INMEDIATAMENTE a toda la aplicación."
             )
+            msg_box.setIcon(QMessageBox.Icon.Information)
+            
+            # Aplicar el tema actual al QMessageBox
+            from src.utils.themes import ThemeManager
+            theme_palette = ThemeManager.apply_theme_to_palette(theme_text)
+            theme_css = ThemeManager.get_css_styles(theme_text, font_size)
+            msg_box.setPalette(theme_palette)
+            msg_box.setStyleSheet(theme_css)
+            
+            msg_box.exec()
             
         except Exception as e:
             QMessageBox.critical(
