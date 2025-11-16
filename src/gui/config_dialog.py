@@ -32,8 +32,27 @@ class ConfigDialog(QDialog):
         super().__init__(parent)
         self.category_manager = category_manager or CategoryManager()
         self.init_ui()
+        # Cargar tema actual en el combo box
+        self._load_current_theme()
         self.refresh_categories_list()
         self.update_stats()
+        # Aplicar tema inicial
+        self.apply_current_theme_to_self()
+    
+    def _load_current_theme(self):
+        """Carga el tema actual en el combo box"""
+        try:
+            from src.utils.app_config import AppConfig
+            app_config = AppConfig()
+            current_theme = app_config.get_theme()
+            if hasattr(self, 'theme_combo') and self.theme_combo:
+                # Buscar el índice del tema actual
+                for i in range(self.theme_combo.count()):
+                    if self.theme_combo.itemText(i) == current_theme:
+                        self.theme_combo.setCurrentIndex(i)
+                        break
+        except:
+            pass
     
     def init_ui(self):
         """Inicializa la interfaz del diálogo"""
@@ -45,38 +64,18 @@ class ConfigDialog(QDialog):
         layout = QVBoxLayout(self)
         
         # Título
-        title_label = QLabel("⚙️ Configuración de Categorías y Extensiones")
-        title_label.setToolTip("⚙️ Panel principal para configurar categorías, extensiones y personalizar la interfaz")
-        title_label.setStyleSheet("""
-            QLabel {
-                font-size: 18px;
-                font-weight: bold;
-                color: #2c3e50;
-                padding: 15px;
-                text-align: center;
-                background-color: #ecf0f1;
-                border-radius: 8px;
-                margin-bottom: 10px;
-            }
-        """)
-        layout.addWidget(title_label)
+        self.title_label = QLabel("⚙️ Configuración de Categorías y Extensiones")
+        self.title_label.setToolTip("⚙️ Panel principal para configurar categorías, extensiones y personalizar la interfaz")
+        self.title_label.setObjectName("config_title_label")
+        # Estilos se aplicarán dinámicamente con el tema
+        layout.addWidget(self.title_label)
         
         # Estadísticas
-        stats_label = QLabel()
-        stats_label.setToolTip("📊 Resumen de categorías y extensiones configuradas en el sistema")
-        stats_label.setStyleSheet("""
-            QLabel {
-                color: #7f8c8d;
-                font-size: 12px;
-                padding: 8px;
-                text-align: center;
-                background-color: #f8f9fa;
-                border-radius: 6px;
-                border: 1px solid #e9ecef;
-            }
-        """)
-        self.stats_label = stats_label
-        layout.addWidget(stats_label)
+        self.stats_label = QLabel()
+        self.stats_label.setToolTip("📊 Resumen de categorías y extensiones configuradas en el sistema")
+        self.stats_label.setObjectName("config_stats_label")
+        # Estilos se aplicarán dinámicamente con el tema
+        layout.addWidget(self.stats_label)
         
         # Área principal con dos columnas
         main_layout = QHBoxLayout()
@@ -239,17 +238,27 @@ class ConfigDialog(QDialog):
         """Actualiza la lista de categorías"""
         self.categories_list.clear()
         
+        # Obtener colores del tema actual (no hardcodeados)
+        from src.utils.themes import ThemeManager
+        from src.utils.app_config import AppConfig
+        app_config = AppConfig()
+        theme = app_config.get_theme()
+        colors = ThemeManager.get_theme_colors(theme)
+        
         # Obtener categorías del gestor
         categories = self.category_manager.get_categories()
         
         for category_name in sorted(categories.keys()):
             item = QListWidgetItem(category_name)
             
-            # Marcar categorías del sistema
+            # Marcar categorías del sistema con color del tema
             if self.category_manager.is_system_category(category_name):
-                item.setBackground(QColor(COLORS["HEADER_BG"]))
+                # Usar color del tema en lugar de hardcodeado
+                item.setBackground(QColor(colors.get('accent', colors['primary'])))
+                item.setForeground(QColor(colors['text_primary']))
                 item.setToolTip("📁 Categoría del sistema (no se puede eliminar)")
             else:
+                item.setForeground(QColor(colors['text_primary']))
                 item.setToolTip("📁 Categoría personalizada (se puede eliminar)")
             
             self.categories_list.addItem(item)
@@ -272,10 +281,18 @@ class ConfigDialog(QDialog):
         """Actualiza la lista de extensiones de una categoría"""
         self.extensions_list.clear()
         
+        # Obtener colores del tema actual
+        from src.utils.themes import ThemeManager
+        from src.utils.app_config import AppConfig
+        app_config = AppConfig()
+        theme = app_config.get_theme()
+        colors = ThemeManager.get_theme_colors(theme)
+        
         extensions = self.category_manager.get_extensions_for_category(category_name)
         
         for extension in sorted(extensions):
             item = QListWidgetItem(extension)
+            item.setForeground(QColor(colors['text_primary']))
             self.extensions_list.addItem(item)
     
     def add_category(self):
@@ -465,11 +482,19 @@ class ConfigDialog(QDialog):
             font_size = self.get_font_size_from_combo()
             theme_text = self.theme_combo.currentText()
             
+            # Guardar configuración PRIMERO
+            from src.utils.app_config import AppConfig
+            app_config = AppConfig()
+            app_config.set_font_size(font_size)
+            app_config.set_theme(theme_text)
+            
             # Emitir señal para aplicar cambios INMEDIATAMENTE
             self.interface_changes_requested.emit(font_size, theme_text)
             
-            # Aplicar el tema a este mismo diálogo inmediatamente
-            self.apply_current_theme_to_self()
+            # Aplicar el tema a este mismo diálogo inmediatamente (después de guardar)
+            # Usar QTimer para asegurar que se aplica después de que se procesen los eventos
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(50, self.apply_current_theme_to_self)
             
             QMessageBox.information(
                 self,
@@ -514,22 +539,151 @@ class ConfigDialog(QDialog):
     def apply_current_theme_to_self(self):
         """Aplica el tema actual a este mismo diálogo usando el sistema mejorado"""
         try:
-            from src.utils.theme_applier import theme_applier
             from src.utils.app_config import AppConfig
+            from src.utils.themes import ThemeManager
+            from PyQt6.QtWidgets import QWidget, QGroupBox, QComboBox, QPushButton, QLabel
             
             app_config = AppConfig()
             theme = app_config.get_theme()
             font_size = app_config.get_font_size()
             
-            # Usar el nuevo sistema mejorado de aplicación de temas
-            success = theme_applier.apply_theme_to_dialog(self, theme, font_size)
+            # Obtener colores del tema
+            colors = ThemeManager.get_theme_colors(theme)
+            palette = ThemeManager.apply_theme_to_palette(theme)
+            css_styles = ThemeManager.get_css_styles(theme, font_size)
             
-            if success:
-                from src.utils.logger import success
-                success(f"Tema aplicado correctamente al diálogo de configuración: {theme}")
-            else:
-                from src.utils.logger import error
-                error(f"Error aplicando tema al diálogo de configuración: {theme}")
+            # Aplicar paleta y CSS al diálogo PRIMERO
+            self.setPalette(palette)
+            self.setStyleSheet(css_styles)
+            
+            # Aplicar estilos a título y stats con colores del tema
+            if hasattr(self, 'title_label') and self.title_label:
+                self.title_label.setStyleSheet(f"""
+                    QLabel {{
+                        font-size: 18px;
+                        font-weight: bold;
+                        color: {colors['text_primary']} !important;
+                        padding: 15px;
+                        text-align: center;
+                        background-color: {colors['surface']} !important;
+                        border-radius: 8px;
+                        margin-bottom: 10px;
+                    }}
+                """)
+            
+            if hasattr(self, 'stats_label') and self.stats_label:
+                self.stats_label.setStyleSheet(f"""
+                    QLabel {{
+                        color: {colors['text_secondary']} !important;
+                        font-size: 12px;
+                        padding: 8px;
+                        text-align: center;
+                        background-color: {colors['surface']} !important;
+                        border-radius: 6px;
+                        border: 1px solid {colors['border']} !important;
+                    }}
+                """)
+            
+            # Aplicar estilos específicos a QListWidget (listas de categorías y extensiones)
+            if hasattr(self, 'categories_list') and self.categories_list:
+                self.categories_list.setStyleSheet(f"""
+                    QListWidget {{
+                        background-color: {colors['surface']} !important;
+                        color: {colors['text_primary']} !important;
+                        border: 1px solid {colors['border']} !important;
+                        border-radius: 8px;
+                        padding: 4px;
+                    }}
+                    QListWidget::item {{
+                        background-color: {colors['surface']} !important;
+                        color: {colors['text_primary']} !important;
+                        padding: 6px;
+                        border-radius: 4px;
+                    }}
+                    QListWidget::item:selected {{
+                        background-color: {colors['primary']} !important;
+                        color: white !important;
+                    }}
+                    QListWidget::item:hover {{
+                        background-color: {colors.get('button_hover', colors['secondary'])} !important;
+                        color: white !important;
+                    }}
+                """)
+            
+            if hasattr(self, 'extensions_list') and self.extensions_list:
+                self.extensions_list.setStyleSheet(f"""
+                    QListWidget {{
+                        background-color: {colors['surface']} !important;
+                        color: {colors['text_primary']} !important;
+                        border: 1px solid {colors['border']} !important;
+                        border-radius: 8px;
+                        padding: 4px;
+                    }}
+                    QListWidget::item {{
+                        background-color: {colors['surface']} !important;
+                        color: {colors['text_primary']} !important;
+                        padding: 6px;
+                        border-radius: 4px;
+                    }}
+                    QListWidget::item:selected {{
+                        background-color: {colors['primary']} !important;
+                        color: white !important;
+                    }}
+                    QListWidget::item:hover {{
+                        background-color: {colors.get('button_hover', colors['secondary'])} !important;
+                        color: white !important;
+                    }}
+                """)
+            
+            # Aplicar a todos los widgets hijos de forma más completa
+            for widget in self.findChildren(QWidget):
+                try:
+                    widget.setPalette(palette)
+                    # Para GroupBox, Labels, ComboBox, etc., aplicar estilos del tema
+                    if isinstance(widget, (QGroupBox, QLabel, QComboBox)):
+                        # Aplicar estilos del tema pero mantener funcionalidad
+                        widget.setStyleSheet(css_styles)
+                    elif isinstance(widget, QPushButton):
+                        # Los botones ya tienen estilos en el CSS global, solo aplicar paleta
+                        widget.setPalette(palette)
+                    elif isinstance(widget, QListWidget):
+                        # QListWidget ya tiene estilos específicos arriba, solo aplicar paleta
+                        widget.setPalette(palette)
+                    else:
+                        # Otros widgets: aplicar CSS si no tiene estilos personalizados
+                        current_style = widget.styleSheet() or ""
+                        if not current_style or '!important' not in current_style:
+                            widget.setStyleSheet(css_styles)
+                except:
+                    pass
+            
+            # Refrescar las listas para aplicar nuevos colores a los items
+            # Guardar categoría seleccionada antes de refrescar
+            current_category = None
+            if hasattr(self, 'categories_list') and self.categories_list.currentItem():
+                current_category = self.categories_list.currentItem().text()
+            
+            # Refrescar lista de categorías
+            self.refresh_categories_list()
+            
+            # Restaurar selección si había una
+            if current_category:
+                for i in range(self.categories_list.count()):
+                    item = self.categories_list.item(i)
+                    if item and item.text() == current_category:
+                        self.categories_list.setCurrentItem(item)
+                        self.refresh_extensions_list(current_category)
+                        break
+            
+            # Forzar actualización completa
+            self.update()
+            self.repaint()
+            
+            # Procesar eventos para asegurar que se apliquen los cambios
+            from PyQt6.QtWidgets import QApplication
+            app = QApplication.instance()
+            if app:
+                app.processEvents()
             
         except Exception as e:
             from src.utils.logger import error
@@ -555,12 +709,14 @@ class ConfigDialog(QDialog):
             self.setPalette(palette)
             self.setStyleSheet(css_styles)
             
-            # Aplicar a todos los widgets hijos de forma más agresiva
+            # Aplicar a todos los widgets hijos (respetando estilos personalizados)
             for widget in self.findChildren(QWidget):
                 try:
                     widget.setPalette(palette)
-                    widget.setStyleSheet("")  # Limpiar estilos personalizados
-                    widget.setStyleSheet(css_styles)  # Aplicar tema
+                    # Solo aplicar CSS si no tiene estilos personalizados con !important
+                    current_style = widget.styleSheet() or ""
+                    if not current_style or '!important' not in current_style:
+                        widget.setStyleSheet(css_styles)
                 except:
                     pass
             

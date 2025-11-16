@@ -482,6 +482,63 @@ class ThemeManager:
         """Genera estilos CSS modernos usando el sistema actualizado"""
         colors = cls.get_theme_colors(theme_name)
         return get_modern_css_styles(colors, font_size)
+    
+    @classmethod
+    def get_theme_color(cls, theme_name: str, color_key: str, fallback: str = "#000000") -> str:
+        """
+        Obtiene un color específico del tema de forma segura
+        
+        Args:
+            theme_name: Nombre del tema
+            color_key: Clave del color (ej: 'primary', 'background', 'text_primary')
+            fallback: Color de respaldo si no se encuentra
+        
+        Returns:
+            str: Color en formato hexadecimal
+        """
+        colors = cls.get_theme_colors(theme_name)
+        return colors.get(color_key, fallback)
+    
+    @classmethod
+    def get_semantic_color(cls, theme_name: str, semantic: str) -> str:
+        """
+        Obtiene un color semántico del tema (success, error, warning, info)
+        
+        Args:
+            theme_name: Nombre del tema
+            semantic: Tipo semántico ('success', 'error', 'warning', 'info')
+        
+        Returns:
+            str: Color en formato hexadecimal
+        """
+        colors = cls.get_theme_colors(theme_name)
+        semantic_map = {
+            'success': colors.get('success', '#388e3c'),
+            'error': colors.get('error', '#d32f2f'),
+            'warning': colors.get('warning', '#f57c00'),
+            'info': colors.get('info', colors.get('primary', '#1976d2'))
+        }
+        return semantic_map.get(semantic, colors.get('primary', '#1976d2'))
+    
+    @classmethod
+    def format_css_with_theme(cls, theme_name: str, css_template: str) -> str:
+        """
+        Formatea un template CSS reemplazando variables de tema
+        
+        Args:
+            theme_name: Nombre del tema
+            css_template: Template CSS con placeholders {color_key}
+        
+        Returns:
+            str: CSS formateado con colores del tema
+        """
+        colors = cls.get_theme_colors(theme_name)
+        try:
+            return css_template.format(**colors)
+        except KeyError as e:
+            from .logger import warn
+            warn(f"Color no encontrado en template CSS: {e}")
+            return css_template
 
 
 # Compatibilidad con código legacy

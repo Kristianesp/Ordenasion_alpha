@@ -365,9 +365,9 @@ def get_modern_css_styles(colors: dict, font_size: int = 12) -> str:
         height: 0px !important;
     }}
 
-    /* 🎯 ESTADO ESPECIAL PARA BOTÓN DE ESCANEO */
+    /* 🎯 ESTADO ESPECIAL PARA BOTÓN DE ESCANEO - Usa colores del tema */
     QPushButton#scan_button {{
-        background-color: #2196F3 !important;
+        background-color: {colors['primary']} !important;
         color: white !important;
         border: none !important;
         border-radius: 8px !important;
@@ -377,15 +377,15 @@ def get_modern_css_styles(colors: dict, font_size: int = 12) -> str:
     }}
 
     QPushButton#scan_button:hover {{
-        background-color: #42A5F5 !important;
+        background-color: {colors.get('button_hover', colors['secondary'])} !important;
     }}
 
     QPushButton#scan_button:pressed {{
-        background-color: #1976D2 !important;
+        background-color: {colors.get('button_pressed', colors['primary'])} !important;
     }}
 
     QPushButton#scan_button:disabled {{
-        background-color: #666 !important;
-        color: #999 !important;
+        background-color: {colors.get('text_disabled', '#666')} !important;
+        color: {colors.get('text_secondary', '#999')} !important;
     }}
     """
