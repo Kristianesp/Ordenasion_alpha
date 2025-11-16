@@ -1653,18 +1653,35 @@ class FileOrganizerGUI(QMainWindow):
             self.log_message(f"⚠️ Error refrescando tablas después del tema: {str(e)}")
     
     def _reapply_table_column_widths(self):
-        """Re-aplica los anchos de columna de la tabla principal después de cambiar el tema"""
+        """✅ Re-aplica los anchos de columna de TODAS las tablas después de cambiar el tema/fuente"""
         try:
+            # 1. Tabla principal de movimientos
             if hasattr(self, 'movements_table') and self.movements_table:
-                # Re-aplicar anchos fijos
                 self.movements_table.setColumnWidth(0, 50)     # ☑️ Checkbox
                 self.movements_table.setColumnWidth(1, 900)    # 📂 Elemento - 900px
                 self.movements_table.setColumnWidth(2, 200)    # 📁 Destino - 200px
                 self.movements_table.setColumnWidth(3, 200)    # 📊 % - 200px
                 self.movements_table.setColumnWidth(4, 200)    # 📄 Archivos - 200px
                 self.movements_table.setColumnWidth(5, 200)    # 💾 Tamaño - 200px
-                
-                self.log_message("📏 Anchos de columna re-aplicados después del cambio de tema")
+                self.log_message("📏 Anchos de tabla principal re-aplicados")
+            
+            # 2. Tabla de duplicados
+            if hasattr(self, 'duplicates_dashboard') and self.duplicates_dashboard:
+                if hasattr(self.duplicates_dashboard, 'apply_column_widths'):
+                    self.duplicates_dashboard.apply_column_widths()
+                    self.log_message("📏 Anchos de tabla de duplicados re-aplicados")
+            
+            # 3. Tabla de discos (en DiskViewer)
+            if hasattr(self, 'disk_viewer') and self.disk_viewer:
+                if hasattr(self.disk_viewer, 'disks_table'):
+                    # Anchos predefinidos de la tabla de discos
+                    self.disk_viewer.disks_table.setColumnWidth(0, 80)   # Unidad
+                    self.disk_viewer.disks_table.setColumnWidth(5, 80)   # % Uso
+                    self.disk_viewer.disks_table.setColumnWidth(6, 100)  # Sistema
+                    self.disk_viewer.disks_table.setColumnWidth(7, 130)  # Botón
+                    self.log_message("📏 Anchos de tabla de discos re-aplicados")
+            
+            self.log_message("✅ Todos los anchos de columna re-aplicados después del cambio")
         except Exception as e:
             self.log_message(f"⚠️ Error re-aplicando anchos de columna: {str(e)}")
     

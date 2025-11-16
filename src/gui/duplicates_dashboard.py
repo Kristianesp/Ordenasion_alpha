@@ -539,25 +539,29 @@ class DuplicatesDashboard(QWidget):
         header.setSectionsClickable(True)
         header.sectionClicked.connect(self.on_header_clicked)
         
-        # Establecer anchos por defecto
+        # ✅ Establecer anchos predefinidos según especificaciones
         self.default_column_widths = {
             0: 50,   # Checkbox
-            1: 250,  # Nombre
-            2: 300,  # Ubicación
-            3: 100,  # Tamaño
-            4: 140,  # Fecha
-            5: 160,  # Hash
-            6: 90    # Acciones
+            1: 800,  # Nombre - 800px (especificado)
+            2: 300,  # Ubicación - 300px (especificado)
+            3: 180,  # Tamaño - 180px (especificado)
+            4: 180,  # Fecha - 180px (especificado)
+            5: 180,  # Hash - 180px (especificado)
+            6: 180   # Acciones - 180px (especificado)
         }
         
-        # Aplicar anchos por defecto
-        for column, width in self.default_column_widths.items():
-            self.duplicates_table.setColumnWidth(column, width)
+        # Aplicar anchos por defecto inicial
+        self.apply_column_widths()
         
         # Conectar señales
         header.sectionResized.connect(self.on_column_resized)
         header.setSectionsMovable(True)
         header.sectionMoved.connect(self.on_column_moved)
+    
+    def apply_column_widths(self):
+        """✅ Aplica los anchos de columna predefinidos - Se llama después de cargar datos"""
+        for column, width in self.default_column_widths.items():
+            self.duplicates_table.setColumnWidth(column, width)
         
         # Habilitar selección por filas y checkboxes
         self.duplicates_table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
@@ -1008,6 +1012,9 @@ class DuplicatesDashboard(QWidget):
             self.duplicates_model.load_full_data(model_data)
             self.update_pagination_controls()
             
+            # ✅ CRÍTICO: Aplicar anchos de columna DESPUÉS de cargar datos
+            self.apply_column_widths()
+            
             self.log_message(f"🚀 Tabla virtualizada lista - Mostrando página 1 de {self.duplicates_model.get_page_info()['total_pages']}")
             
         except Exception as e:
@@ -1019,12 +1026,16 @@ class DuplicatesDashboard(QWidget):
         """🚀 MEJORA: Avanza a la siguiente página"""
         if self.duplicates_model.next_page():
             self.update_pagination_controls()
+            # ✅ Aplicar anchos después de cambiar de página
+            self.apply_column_widths()
             self.log_message(f"📄 Página {self.duplicates_model.get_page_info()['current_page']} cargada")
     
     def go_to_previous_page(self):
         """🚀 MEJORA: Retrocede a la página anterior"""
         if self.duplicates_model.previous_page():
             self.update_pagination_controls()
+            # ✅ Aplicar anchos después de cambiar de página
+            self.apply_column_widths()
             self.log_message(f"📄 Página {self.duplicates_model.get_page_info()['current_page']} cargada")
     
     def update_pagination_controls(self):
