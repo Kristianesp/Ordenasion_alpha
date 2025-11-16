@@ -1,0 +1,48 @@
+{
+  "interface": {
+    "font_size": 12,
+    "theme": "🌙 Oscuro Profesional"
+  },
+  "categories": {
+    "auto_save": true,
+    "backup_enabled": true
+  },
+  "analysis": {
+    "min_similarity": 70,
+    "auto_analyze": true
+  },
+  "health": {
+    "temperature": {
+      "cool_min": 40,
+      "moderate": 65,
+      "high": 75,
+      "critical": 85
+    },
+    "tbw_per_tb": 150,
+    "tbw_bands": {
+      "medium": 0.5,
+      "high": 0.8
+    },
+    "tbw_by_type": {
+      "nvme": 150,
+      "ata": 150,
+      "hdd": 0
+    },
+    "degrade_on_smart_fail": true,
+    "hours_bands": {
+      "moderate": 10000,
+      "high": 30000,
+      "very_high": 50000
+    },
+    "cycles_bands": {
+      "moderate": 2000,
+      "high": 10000
+    },
+    "weights": {
+      "temp": 0.35,
+      "tbw": 0.35,
+      "hours": 0.2,
+      "cycles": 0.1
+    }
+  }
+}

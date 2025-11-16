@@ -1,0 +1,67 @@
+# 🚀 DEPENDENCIAS - ORGANIZADOR PROFESIONAL DE DISCOS
+# Archivo de requisitos para instalar todas las dependencias necesarias
+
+# === DEPENDENCIAS BASE (Ya instaladas) ===
+PyQt6>=6.4.0          # Interfaz gráfica principal
+
+# === DEPENDENCIAS NUEVAS - PRIORIDAD 1 ===
+psutil>=5.9.0          # Información del sistema y discos
+hashlib                 # Cálculo de hashes (incluido en Python)
+pathlib                 # Manejo de rutas (incluido en Python)
+requests>=2.28.0
+WMI>=1.5.1
+pySMART>=1.4.1
+
+# === DEPENDENCIAS NUEVAS - PRIORIDAD 2 ===
+Pillow>=9.5.0          # Procesamiento de imágenes y metadatos
+matplotlib>=3.7.0      # Gráficos y visualizaciones
+numpy>=1.24.0          # Cálculos numéricos (dependencia de matplotlib)
+
+# === DEPENDENCIAS NUEVAS - PRIORIDAD 3 ===
+sqlite3                 # Base de datos local (incluido en Python)
+schedule>=1.2.0         # Tareas programadas
+reportlab>=4.0.0        # Generación de reportes PDF
+
+# === DEPENDENCIAS OPCIONALES - PRIORIDAD 4 ===
+# Las siguientes dependencias se instalarán según necesidad:
+
+# Para análisis de contenido avanzado:
+# python-magic>=0.4.27          # Detección de tipos de archivo
+# exifread>=3.1.0               # Metadatos de imágenes
+# mutagen>=1.47.0               # Metadatos de audio/video
+
+# Para procesamiento de texto:
+# python-docx>=0.8.11           # Lectura de documentos Word
+# PyPDF2>=3.0.0                 # Lectura de PDFs
+# openpyxl>=3.1.0               # Lectura de Excel
+
+# Para compresión y archivos:
+# py7zr>=0.20.0                 # Soporte para archivos 7z
+# rarfile>=4.0                  # Soporte para archivos RAR
+
+# Para interfaz avanzada:
+# PyQt6-Charts>=6.4.0           # Gráficos avanzados de Qt
+# PyQt6-WebEngine>=6.4.0        # Motor web integrado
+
+# === INSTRUCCIONES DE INSTALACIÓN ===
+
+# Instalar dependencias básicas:
+# pip install -r requirements.txt
+
+# Instalar dependencias opcionales según necesidad:
+# pip install python-magic exifread mutagen
+# pip install python-docx PyPDF2 openpyxl
+# pip install py7zr rarfile
+# pip install PyQt6-Charts PyQt6-WebEngine
+
+# === NOTAS IMPORTANTES ===
+
+# 1. Algunas dependencias pueden requerir compiladores en Windows
+# 2. python-magic puede requerir instalación manual en algunos sistemas
+# 3. Las dependencias se instalarán progresivamente según las prioridades
+# 4. Se recomienda usar un entorno virtual: python -m venv venv
+
+# === VERSIÓN DEL ARCHIVO ===
+# Versión: 1.0
+# Última actualización: 22/08/2025
+# Compatible con: Python 3.8+

@@ -1,0 +1,16 @@
+{
+  "model_name": "Crucial MX500",
+  "serial_number": "CT500MX500SSD1",
+  "firmware_version": "M3CR023",
+  "smart_status": { "passed": true },
+  "ata_smart_attributes": {
+    "table": [
+      { "id": 9, "name": "Power_On_Hours", "raw": {"value": 8765} },
+      { "id": 12, "name": "Power_Cycle_Count", "raw": {"value": 350} },
+      { "id": 194, "name": "Temperature_Celsius", "raw": {"value": 35} },
+      { "id": 241, "name": "Total_LBAs_Written", "raw": {"value": 12000} },
+      { "id": 242, "name": "Total_LBAs_Read", "raw": {"value": 8000} }
+    ]
+  }
+}
+
