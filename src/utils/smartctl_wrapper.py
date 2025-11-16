@@ -58,7 +58,7 @@ class SmartctlWrapper:
         """Verifica si smartctl está disponible"""
         return self.smartctl_path is not None
     
-    def get_disk_smart_data(self, physical_drive: str, timeout: int = 10, max_retries: int = 2) -> Optional[Dict[str, Any]]:
+    def get_disk_smart_data(self, physical_drive: str, timeout: int = 10, max_retries: int = 2, device_type: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
         Obtiene datos SMART reales de un disco físico con reintentos y timeout configurable
         
@@ -73,13 +73,34 @@ class SmartctlWrapper:
         if not self.is_available():
             return None
         
-        # En Windows, smartctl usa /dev/sdX o el formato de disco físico
-        device = f"/dev/pd{physical_drive.replace('PHYSICALDRIVE', '')}" if 'PHYSICALDRIVE' in physical_drive else physical_drive
+        # Convertir formato de disco físico a formato que smartctl entiende en Windows
+        # Intentar múltiples formatos para compatibilidad
+        device = None
+        if 'PHYSICALDRIVE' in physical_drive:
+            drive_num = physical_drive.replace('PHYSICALDRIVE', '').strip()
+            # Formato estándar para Windows: /dev/pdX
+            device = f"/dev/pd{drive_num}"
+        elif physical_drive.startswith('/dev/'):
+            # Ya está en formato correcto
+            device = physical_drive
+        else:
+            # Intentar como está
+            device = physical_drive
+        
+        if not device:
+            self._log(f"⚠️ No se pudo determinar formato de dispositivo para {physical_drive}")
+            return None
         
         for attempt in range(max_retries + 1):
             try:
                 # Ejecutar smartctl con salida JSON
-                cmd = [self.smartctl_path, "-a", "-j", device]
+                # -a: toda la información SMART
+                # -j: salida en formato JSON
+                # -d: especificar tipo de dispositivo si se conoce (sat, nvme, etc.)
+                cmd = [self.smartctl_path, "-a", "-j"]
+                if device_type:
+                    cmd.extend(["-d", device_type])
+                cmd.append(device)
                 
                 # Aumentar timeout progresivamente en reintentos
                 current_timeout = timeout + (attempt * 5)
@@ -92,9 +113,31 @@ class SmartctlWrapper:
                     creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
                 )
                 
+                # Códigos de retorno de smartctl:
+                # 0 = OK
+                # 1 = Error de línea de comandos
+                # 2 = Error al abrir dispositivo
+                # 4 = OK con warnings (datos válidos)
+                # 64 = Error de sintaxis
+                # 128 = Error fatal
                 if result.returncode in [0, 4]:  # 0 = OK, 4 = OK con warnings
                     try:
+                        # Verificar que stdout no esté vacío
+                        if not result.stdout or not result.stdout.strip():
+                            self._log(f"⚠️ smartctl no devolvió datos para {device}")
+                            if attempt < max_retries:
+                                continue
+                            return None
+                        
                         data = json.loads(result.stdout)
+                        
+                        # Verificar que sea un diccionario válido
+                        if not isinstance(data, dict):
+                            self._log(f"⚠️ smartctl devolvió datos en formato incorrecto para {device}")
+                            if attempt < max_retries:
+                                continue
+                            return None
+                        
                         parsed_data = self._parse_smart_json(data)
                         
                         # Validar que los datos parseados sean válidos
@@ -104,15 +147,30 @@ class SmartctlWrapper:
                             return parsed_data
                         else:
                             self._log(f"⚠️ Datos SMART inválidos para {device}")
+                            if attempt < max_retries:
+                                continue
                             return None
                             
-                    except json.JSONDecodeError:
-                        self._log(f"⚠️ Error parseando JSON de smartctl para {device}")
+                    except json.JSONDecodeError as e:
+                        self._log(f"⚠️ Error parseando JSON de smartctl para {device}: {e}")
+                        # Si hay salida, puede ser un mensaje de error en texto
+                        if result.stderr:
+                            self._log(f"  stderr: {result.stderr[:200]}")
                         if attempt < max_retries:
                             continue
                         return None
+                elif result.returncode == 2:
+                    # Error al abrir dispositivo - puede ser permisos o dispositivo no existe
+                    error_msg = result.stderr.strip() if result.stderr else "Error desconocido"
+                    if "Permission denied" in error_msg or "Access denied" in error_msg:
+                        self._log(f"⚠️ Permisos insuficientes para acceder a {device}. Ejecuta como administrador.")
+                    else:
+                        self._log(f"⚠️ No se pudo abrir dispositivo {device}: {error_msg[:100]}")
+                    # No reintentar si es un error de permisos
+                    return None
                 else:
-                    self._log(f"⚠️ smartctl retornó código {result.returncode} para {device}")
+                    error_msg = result.stderr.strip() if result.stderr else f"Código {result.returncode}"
+                    self._log(f"⚠️ smartctl retornó código {result.returncode} para {device}: {error_msg[:100]}")
                     if attempt < max_retries:
                         continue
                     return None
@@ -168,7 +226,21 @@ class SmartctlWrapper:
             nvme_log = data['nvme_smart_health_information_log']
             result['device_type'] = 'nvme'
             
-            result['temperature'] = nvme_log.get('temperature', None)
+            # La temperatura puede venir en diferentes formatos
+            temp_value = nvme_log.get('temperature', None)
+            if temp_value is not None:
+                # Si es un diccionario, puede tener 'value' o 'current'
+                if isinstance(temp_value, dict):
+                    temp_value = temp_value.get('value') or temp_value.get('current') or temp_value.get('temperature')
+                # Convertir de Kelvin a Celsius si es necesario (temperaturas > 200 probablemente están en Kelvin)
+                if isinstance(temp_value, (int, float)):
+                    if temp_value > 200:  # Probablemente en Kelvin
+                        temp_value = temp_value - 273.15
+                    result['temperature'] = int(temp_value) if temp_value else None
+                else:
+                    result['temperature'] = None
+            else:
+                result['temperature'] = None
             result['power_on_hours'] = nvme_log.get('power_on_hours', None)
             result['power_cycles'] = nvme_log.get('power_cycles', None)
             
@@ -231,10 +303,10 @@ class SmartctlWrapper:
                     self._log(f"    📖 Total LBAs Read: {raw_value:,} unidades ({result['read_bytes']/1024**4:.2f} TB)")
             
             # Calcular contadores de operaciones para SATA si tenemos datos
-            if result['read_bytes'] and result['write_bytes']:
+            if result['read_bytes'] is not None and result['write_bytes'] is not None:
                 avg_op_size = 64 * 1024
-                result['read_count'] = result['read_bytes'] // avg_op_size
-                result['write_count'] = result['write_bytes'] // avg_op_size
+                result['read_count'] = result['read_bytes'] // avg_op_size if result['read_bytes'] > 0 else 0
+                result['write_count'] = result['write_bytes'] // avg_op_size if result['write_bytes'] > 0 else 0
                 self._log(f"  ✅ SATA parsed: Temp: {result['temperature']}°C, Horas: {result['power_on_hours']:,}, Ciclos: {result['power_cycles']:,}")
             
             # Si no encontramos los atributos 241/242, el disco podría no reportarlos
@@ -293,10 +365,15 @@ class SmartctlWrapper:
                 return False
         
         # Si tenemos ambos bytes, verificar que no sean sospechosamente pequeños
+        # Nota: Algunos discos nuevos o con poco uso pueden tener valores bajos, pero válidos
+        # Solo rechazar si ambos son exactamente 0 (lo cual es sospechoso)
         if read_bytes is not None and write_bytes is not None:
-            total_bytes = read_bytes + write_bytes
-            if total_bytes > 0 and total_bytes < (100 * 1024 * 1024):  # Menos de 100MB
-                return False
+            # Si ambos son 0, puede ser un disco nuevo o que no reporta estos atributos
+            # Esto es válido para algunos HDDs que no reportan atributos 241/242
+            if read_bytes == 0 and write_bytes == 0:
+                # Permitir si es un HDD (puede no reportar estos atributos)
+                # Rechazar solo si parece ser un SSD que debería reportarlos
+                pass  # No rechazar automáticamente, dejar que el código que llama decida
         
         # Validar porcentaje de salud si está presente
         health = data.get('health_percentage')
@@ -306,34 +383,89 @@ class SmartctlWrapper:
         
         return True
     
-    def scan_all_disks(self) -> List[str]:
-        """Escanea y retorna IDs PHYSICALDRIVE detectados (Windows)."""
+    def scan_all_disks(self) -> List[Dict[str, Any]]:
         """
-        Escanea todos los discos disponibles en el sistema
+        Escanea todos los discos disponibles usando smartctl --scan (método profesional)
         
         Returns:
-            Lista de IDs de discos físicos detectados
+            Lista de diccionarios con información de cada disco detectado
+            [{"device": "/dev/pd0", "type": "sat", "physical_drive": "PHYSICALDRIVE0"}, ...]
         """
         if not self.is_available():
             return []
         
+        disks = []
+        
         try:
-            # En Windows, intentar escanear /dev/pd0 hasta /dev/pd9
-            disks = []
-            for i in range(10):
-                device = f"/dev/pd{i}"
-                cmd = [self.smartctl_path, "-i", device]
-                
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                    creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
-                )
-                
-                if result.returncode in [0, 4]:
-                    disks.append(f"PHYSICALDRIVE{i}")
+            # Método 1: Usar smartctl --scan (método profesional recomendado)
+            # Esto lista automáticamente todos los discos con su tipo
+            cmd = [self.smartctl_path, "--scan"]
+            
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=5,
+                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
+            )
+            
+            if result.returncode == 0 and result.stdout:
+                # Parsear salida de --scan
+                # Formato típico: /dev/pd0 -d sat # /dev/pd0, ATA device
+                for line in result.stdout.strip().split('\n'):
+                    if line.strip() and not line.strip().startswith('#'):
+                        parts = line.split('#')[0].strip().split()
+                        if parts:
+                            device = parts[0]
+                            device_type = None
+                            if '-d' in parts:
+                                idx = parts.index('-d')
+                                if idx + 1 < len(parts):
+                                    device_type = parts[idx + 1]
+                            
+                            # Extraer número de disco físico
+                            if '/dev/pd' in device:
+                                drive_num = device.replace('/dev/pd', '').strip()
+                                physical_drive = f"PHYSICALDRIVE{drive_num}"
+                                
+                                disk_info = {
+                                    'device': device,
+                                    'physical_drive': physical_drive,
+                                    'type': device_type,
+                                    'raw_line': line
+                                }
+                                disks.append(disk_info)
+                                self._log(f"✅ Disco detectado: {physical_drive} -> {device} (tipo: {device_type or 'auto'})")
+            
+            # Si --scan no funcionó, usar método de escaneo manual
+            if not disks:
+                self._log("⚠️ smartctl --scan no devolvió resultados, usando escaneo manual...")
+                for i in range(10):
+                    device = f"/dev/pd{i}"
+                    cmd = [self.smartctl_path, "-i", device]
+                    
+                    try:
+                        result = subprocess.run(
+                            cmd,
+                            capture_output=True,
+                            text=True,
+                            timeout=2,
+                            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
+                        )
+                        
+                        if result.returncode in [0, 4]:
+                            disk_info = {
+                                'device': device,
+                                'physical_drive': f"PHYSICALDRIVE{i}",
+                                'type': None,
+                                'raw_line': ''
+                            }
+                            disks.append(disk_info)
+                            self._log(f"✅ Disco detectado (manual): PHYSICALDRIVE{i} -> {device}")
+                    except subprocess.TimeoutExpired:
+                        continue
+                    except Exception:
+                        continue
             
             return disks
             
@@ -341,3 +473,59 @@ class SmartctlWrapper:
             from .logger import error
             error(f"Error escaneando discos: {e}")
             return []
+    
+    def get_disk_info_quick(self, physical_drive: str) -> Optional[Dict[str, Any]]:
+        """
+        Obtiene información básica del disco (modelo, número de serie) sin datos SMART completos
+        Útil para mapeo rápido de unidades
+        
+        Args:
+            physical_drive: ID del disco físico (ej: "PHYSICALDRIVE0")
+        
+        Returns:
+            Diccionario con información básica o None
+        """
+        if not self.is_available():
+            return None
+        
+        # Convertir formato de disco físico
+        device = None
+        if 'PHYSICALDRIVE' in physical_drive:
+            drive_num = physical_drive.replace('PHYSICALDRIVE', '').strip()
+            device = f"/dev/pd{drive_num}"
+        elif physical_drive.startswith('/dev/'):
+            device = physical_drive
+        else:
+            device = physical_drive
+        
+        if not device:
+            return None
+        
+        try:
+            # Usar -i para información básica (más rápido que -a)
+            cmd = [self.smartctl_path, "-i", "-j", device]
+            
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=3,
+                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
+            )
+            
+            if result.returncode in [0, 4] and result.stdout:
+                try:
+                    data = json.loads(result.stdout)
+                    return {
+                        'model_name': data.get('model_name', 'Desconocido'),
+                        'serial_number': data.get('serial_number', 'N/A'),
+                        'device': device,
+                        'physical_drive': physical_drive
+                    }
+                except json.JSONDecodeError:
+                    return None
+            
+            return None
+            
+        except Exception:
+            return None

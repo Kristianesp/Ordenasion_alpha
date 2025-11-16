@@ -5,8 +5,10 @@ Maneja la información del sistema, análisis de espacio y gestión segura de un
 """
 
 import os
+import sys
 import psutil
 import platform
+import subprocess
 from typing import Dict, List, Optional, Tuple, Any
 from pathlib import Path
 from dataclasses import dataclass
@@ -48,7 +50,7 @@ class DiskManager:
         self.safe_mode = True  # Por defecto en modo seguro (solo lectura)
         self._disks_cache = None
         self._last_scan_time = 0
-        self._drive_map = None
+        self._drive_map = None  # --- CAMBIO ---: Inicia como None para lazy loading
         self._smart_cache = SmartCache(ttl_seconds=30)  # Cache con TTL de 30 segundos
         self.app_config = AppConfig()
         self.health_service = HealthService(self.app_config)
@@ -62,40 +64,266 @@ class DiskManager:
         else:
             warn("smartctl no disponible - Se usarán datos psutil como fallback")
         
-        if platform.system() == "Windows" and wmi:
-            try:
-                info("Inicializando WMI service...")
-                import time
-                time.sleep(0.5)  # Esperar a que el sistema esté listo
-                self.wmi_service = wmi.WMI()
-                success("WMI service inicializado correctamente")
-                self._drive_map = self._map_logical_to_physical_drives()
-            except Exception as e:
-                error(f"Error al inicializar WMI: {e}")
-                info("Reintentando inicialización WMI...")
-                try:
-                    import time
-                    time.sleep(2)  # Esperar más tiempo
-                    self.wmi_service = wmi.WMI()
-                    success("WMI service inicializado en segundo intento")
-                    self._drive_map = self._map_logical_to_physical_drives()
-                except Exception as e2:
-                    error(f"Error crítico al inicializar WMI: {e2}")
-                    self.wmi_service = None
-                    self._drive_map = {}
-        else:
-            self.wmi_service = None
-            self._drive_map = {}
+        # --- CAMBIO ---: Eliminada toda la inicialización de WMI de __init__
+        self.wmi_service = None # Inicia como None
     
     def __del__(self):
         """Limpia recursos al destruir la instancia"""
         if hasattr(self, '_executor'):
             self._executor.shutdown(wait=False)
+
+    # --- CAMBIO ---: Nuevo método thread-safe para obtener/crear el mapa WMI
+    def _get_or_create_drive_map(self) -> Dict[str, str]:
+        """
+        Obtiene el mapeo WMI (lógico a físico), creándolo si no existe.
+        Este método es thread-safe usando self._lock.
+        """
+        # 1. Comprobación rápida sin bloqueo
+        if self._drive_map is not None:
+            return self._drive_map
+        
+        # 2. Si no existe, usar el cerrojo para crearlo
+        with self._lock:
+            # 3. Doble comprobación (quizás otro hilo lo creó mientras este esperaba)
+            if self._drive_map is not None:
+                return self._drive_map
+            
+            info("Inicializando WMI y creando mapeo de unidades por primera vez (lazy load)...")
+            
+            if platform.system() != "Windows" or not wmi:
+                warn("WMI no disponible o no es Windows. Mapeo de discos físicos desactivado.")
+                self._drive_map = {} # Cachear el fallo
+                return self._drive_map
+
+            try:
+                import time
+                time.sleep(0.5)  # Esperar a que el sistema esté listo
+                self.wmi_service = wmi.WMI()
+                success("WMI service inicializado (lazy load)")
+                drive_map = self._map_logical_to_physical_drives()
+                self._drive_map = drive_map
+                return self._drive_map
+            
+            except Exception as e:
+                error(f"Error al inicializar WMI (lazy load): {e}")
+                info("Reintentando inicialización WMI (lazy load)...")
+                try:
+                    import time
+                    time.sleep(2)  # Esperar más tiempo
+                    self.wmi_service = wmi.WMI()
+                    success("WMI service inicializado en segundo intento (lazy load)")
+                    drive_map = self._map_logical_to_physical_drives()
+                    self._drive_map = drive_map
+                    return self._drive_map
+                except Exception as e2:
+                    error(f"Error crítico final al inicializar WMI (lazy load): {e2}")
+                    self.wmi_service = None
+                    self._drive_map = {} # Cachear el fallo definitivo
+                    return self._drive_map
+    
+    def _map_drives_with_smartctl_only(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Mapea letras de unidad a discos físicos usando SOLO smartctl (sin WMI)
+        Usa smartctl --scan, tamaño de disco y datos SMART para mapeo preciso
+        """
+        drive_map = {}
+        
+        if not self.smartctl.is_available():
+            warn("smartctl no disponible para mapeo")
+            return drive_map
+        
+        try:
+            # Obtener todos los discos usando smartctl --scan (método profesional)
+            info("🔍 Escaneando discos con smartctl --scan...")
+            scanned_disks = self.smartctl.scan_all_disks()
+            
+            if not scanned_disks:
+                warn("No se encontraron discos con smartctl")
+                return drive_map
+            
+            info(f"✅ Encontrados {len(scanned_disks)} discos físicos")
+            
+            # Obtener información de cada disco físico (tamaño, modelo, etc.)
+            disk_info_map = {}  # physical_drive -> {size, model, device, type}
+            for disk_info in scanned_disks:
+                physical_drive = disk_info.get('physical_drive')
+                device = disk_info.get('device')
+                device_type = disk_info.get('type')
+                
+                if not physical_drive:
+                    continue
+                
+                # Obtener información completa del disco
+                try:
+                    smart_data = self.smartctl.get_disk_smart_data(
+                        physical_drive,
+                        timeout=3,
+                        max_retries=0,
+                        device_type=device_type
+                    )
+                    
+                    if smart_data:
+                        model = smart_data.get('disk_model', 'Desconocido')
+                        # Obtener tamaño del disco usando smartctl -i
+                        disk_size = self._get_disk_size_from_smartctl(physical_drive, device_type)
+                        
+                        disk_info_map[physical_drive] = {
+                            'model': model,
+                            'device': device,
+                            'type': device_type,
+                            'size': disk_size,
+                            'smart_data': smart_data
+                        }
+                        debug(f"  Disco {physical_drive}: {model} ({disk_size / 1024**3:.1f} GB)")
+                except Exception as e:
+                    debug(f"Error obteniendo info de {physical_drive}: {e}")
+                    continue
+            
+            # Obtener todas las particiones del sistema con sus tamaños
+            partitions = psutil.disk_partitions()
+            partition_info = []
+            
+            for partition in partitions:
+                drive_letter = self._extract_drive_letter(partition.mountpoint)
+                if not drive_letter:
+                    continue
+                
+                try:
+                    usage = psutil.disk_usage(partition.mountpoint)
+                    partition_info.append({
+                        'drive_letter': drive_letter,
+                        'drive_key': (drive_letter + ":").upper(),
+                        'mountpoint': partition.mountpoint,
+                        'total_size': usage.total,
+                        'partition': partition
+                    })
+                except Exception:
+                    continue
+            
+            # Mapear cada unidad al disco físico más probable
+            # Estrategia: comparar tamaños y asignar el disco que mejor coincida
+            used_physical_drives = set()  # Evitar asignar el mismo disco a múltiples unidades
+            
+            for part_info in partition_info:
+                drive_key = part_info['drive_key']
+                drive_letter = part_info['drive_letter']
+                partition_size = part_info['total_size']
+                
+                best_match = None
+                best_score = 0
+                
+                # Buscar el mejor disco físico que coincida
+                for physical_drive, disk_data in disk_info_map.items():
+                    # Si este disco ya está asignado, saltarlo
+                    if physical_drive in used_physical_drives:
+                        continue
+                    
+                    disk_size = disk_data.get('size', 0)
+                    
+                    # Calcular score de coincidencia basado en tamaño
+                    # Si el tamaño de la partición es menor o igual al tamaño del disco, es una buena coincidencia
+                    if disk_size > 0:
+                        size_ratio = min(partition_size, disk_size) / max(partition_size, disk_size)
+                        score = size_ratio
+                        
+                        # Bonus si el tamaño de la partición es exactamente el tamaño del disco (partición única)
+                        if abs(partition_size - disk_size) < (100 * 1024 * 1024):  # Diferencia < 100MB
+                            score = 1.0
+                        
+                        if score > best_score:
+                            best_score = score
+                            best_match = {
+                                'physical_drive': physical_drive,
+                                'device': disk_data['device'],
+                                'type': disk_data['type'],
+                                'model': disk_data['model'],
+                                'mountpoint': part_info['mountpoint'],
+                                'score': score
+                            }
+                
+                # Si encontramos una buena coincidencia (score > 0.5), asignarla
+                if best_match and best_score > 0.5:
+                    drive_map[drive_key] = best_match
+                    used_physical_drives.add(best_match['physical_drive'])
+                    success(f"✅ Mapeado: {drive_key} -> {best_match['physical_drive']} ({best_match['model']}) [score: {best_score:.2f}]")
+                else:
+                    # Si no hay buena coincidencia, intentar asignar cualquier disco disponible
+                    # pero solo si no hay mejor opción
+                    for physical_drive, disk_data in disk_info_map.items():
+                        if physical_drive not in used_physical_drives:
+                            drive_map[drive_key] = {
+                                'physical_drive': physical_drive,
+                                'device': disk_data['device'],
+                                'type': disk_data['type'],
+                                'model': disk_data['model'],
+                                'mountpoint': part_info['mountpoint'],
+                                'score': 0.3  # Score bajo porque no hay buena coincidencia
+                            }
+                            used_physical_drives.add(physical_drive)
+                            warn(f"⚠️ Mapeado aproximado: {drive_key} -> {physical_drive} ({disk_data['model']})")
+                            break
+            
+            if drive_map:
+                info(f"✅ Mapeo completado: {len(drive_map)} unidades mapeadas")
+            else:
+                warn("⚠️ No se pudo mapear ninguna unidad")
+            
+            return drive_map
+            
+        except Exception as e:
+            error(f"Error en mapeo con smartctl: {e}")
+            return drive_map
+    
+    def _get_disk_size_from_smartctl(self, physical_drive: str, device_type: Optional[str] = None) -> int:
+        """Obtiene el tamaño del disco físico usando smartctl"""
+        try:
+            device = None
+            if 'PHYSICALDRIVE' in physical_drive:
+                drive_num = physical_drive.replace('PHYSICALDRIVE', '').strip()
+                device = f"/dev/pd{drive_num}"
+            else:
+                device = physical_drive
+            
+            if not device:
+                return 0
+            
+            cmd = [self.smartctl.smartctl_path, "-i", "-j", device]
+            if device_type:
+                cmd = [self.smartctl.smartctl_path, "-i", "-j", "-d", device_type, device]
+            
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=3,
+                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
+            )
+            
+            if result.returncode in [0, 4] and result.stdout:
+                import json
+                data = json.loads(result.stdout)
+                # El tamaño puede venir en diferentes campos según el tipo de disco
+                user_capacity = data.get('user_capacity', {})
+                if isinstance(user_capacity, dict):
+                    bytes_value = user_capacity.get('bytes', 0)
+                    if bytes_value:
+                        return int(bytes_value)
+                
+                # Alternativa: buscar en otros campos
+                capacity = data.get('capacity', {})
+                if isinstance(capacity, dict):
+                    bytes_value = capacity.get('bytes', 0)
+                    if bytes_value:
+                        return int(bytes_value)
+            
+            return 0
+        except Exception:
+            return 0
     
     def _map_logical_to_physical_drives(self) -> Dict[str, str]:
         """Crea un mapeo de letra de unidad (ej. 'C:') a disco físico (ej. 'PhysicalDrive0') usando WMI."""
         if not self.wmi_service:
-            error("WMI service no disponible")
+            error("WMI service no disponible para mapeo")
             return {}
         
         drive_map = {}
@@ -243,7 +471,7 @@ class DiskManager:
             self._executor.submit(self.get_disk_io_stats, path)
 
     def _get_smart_data(self, drive_letter: str) -> Optional[dict]:
-        """Obtiene SOLO datos SMART lifetime reales usando smartctl - NO fallback"""
+        """Obtiene SOLO datos SMART lifetime reales usando smartctl - NO fallback, SIN WMI"""
         if not drive_letter:
             return None
         
@@ -252,26 +480,22 @@ class DiskManager:
             error(f"smartctl no disponible - No se pueden obtener datos SMART para {drive_letter}")
             return None
         
-        # Si el mapeo no existe, intentar recrearlo
+        # Crear mapeo usando solo smartctl (sin WMI)
         if not self._drive_map:
-            info("Recreando mapeo WMI...")
-            # Si WMI no está disponible, intentar reinicializarlo
-            if not self.wmi_service and platform.system() == "Windows" and wmi:
-                try:
-                    import time
-                    time.sleep(1)  # Esperar a que el sistema esté listo
-                    self.wmi_service = wmi.WMI()
-                    success("WMI service reinicializado")
-                except Exception as e:
-                    error(f"Error al reinicializar WMI: {e}")
-                    return None
-            self._drive_map = self._map_logical_to_physical_drives()
+            debug("Creando mapeo de unidades usando smartctl (sin WMI)...")
+            self._drive_map = self._map_drives_with_smartctl_only()
         
         drive_key = (drive_letter + ":").upper()
-        physical_drive_id = self._drive_map.get(drive_key) if self._drive_map else None
+        drive_info = self._drive_map.get(drive_key)  # Ahora es un dict con más info
+        
+        if not drive_info:
+            debug(f"No se pudo mapear {drive_letter} a disco físico. Mapeo actual: {list(self._drive_map.keys())}")
+            return None
+        
+        physical_drive_id = drive_info.get('physical_drive')
+        device_type = drive_info.get('type')
         
         if not physical_drive_id:
-            error(f"No se pudo mapear {drive_letter} a disco físico. Mapeo actual: {self._drive_map}")
             return None
         
         # Verificar si ya tenemos estos datos en cache de sesión
@@ -283,7 +507,20 @@ class DiskManager:
         
         try:
             debug(f"Obteniendo datos SMART lifetime para {drive_letter} ({physical_drive_id})...")
-            smart_data = self.smartctl.get_disk_smart_data(physical_drive_id)
+            # Mostrar en terminal primero para debugging
+            info(f"🔍 Obteniendo datos SMART para {drive_letter}: ({physical_drive_id})")
+            smart_data = self.smartctl.get_disk_smart_data(physical_drive_id, device_type=device_type)
+            
+            # Mostrar datos en terminal
+            if smart_data:
+                model = smart_data.get('disk_model', 'Desconocido')
+                read_tb = (smart_data.get('read_bytes') or 0) / 1024**4
+                write_tb = (smart_data.get('write_bytes') or 0) / 1024**4
+                temp = smart_data.get('temperature')
+                hours = smart_data.get('power_on_hours')
+                success(f"✅ SMART datos para {drive_letter}: {model} | {read_tb:.2f} TB leídos | {write_tb:.2f} TB escritos | Temp: {temp}°C | Horas: {hours:,}")
+            else:
+                warn(f"⚠️ No se obtuvieron datos SMART para {drive_letter}")
             
             if not smart_data:
                 warn(f"smartctl no devolvió datos para {drive_letter} - Datos SMART no disponibles")
