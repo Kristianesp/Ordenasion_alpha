@@ -227,7 +227,7 @@ class DuplicatesDashboard(QWidget):
         # Ruta actual (compacta)
         self.current_folder_label = QLabel("Ninguna ruta seleccionada")
         self.current_folder_label.setWordWrap(False)
-        self.current_folder_label.setStyleSheet("color: #666; font-style: italic;")
+        # Estilos se aplicarán dinámicamente con el tema
         self.current_folder_label.setToolTip("Muestra la ruta de la carpeta seleccionada para buscar duplicados")
         config_layout.addWidget(self.current_folder_label)
         
@@ -278,7 +278,7 @@ class DuplicatesDashboard(QWidget):
         
         # Información del método (compacta)
         self.method_info = QLabel("⚡ ULTRA-RÁPIDO: Compara tamaño + nombre + extensión")
-        self.method_info.setStyleSheet("color: #2e7d32; font-style: italic; font-size: 11px;")
+        # Estilos se aplicarán dinámicamente con el tema
         self.method_info.setToolTip("Descripción del método de búsqueda seleccionado\nCambia automáticamente según la opción elegida")
         filters_layout.addWidget(self.method_info)
         
@@ -292,31 +292,7 @@ class DuplicatesDashboard(QWidget):
         self.scan_btn.setToolTip("Inicia la búsqueda de archivos duplicados\nRequiere seleccionar una carpeta primero")
         # ✅ NUEVO: Estilo específico con mayor prioridad para evitar sobrescritura de temas
         self.scan_btn.setObjectName("scan_button")  # ID específico para CSS
-        self.scan_btn.setStyleSheet("""
-            QPushButton#scan_button {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
-                    stop:0 #2196F3, stop:1 #1976D2) !important;
-                color: white !important;
-                border: none !important;
-                border-radius: 8px !important;
-                font-weight: bold !important;
-                font-size: 14px !important;
-                padding: 8px !important;
-                text-transform: uppercase !important;
-            }
-            QPushButton#scan_button:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
-                    stop:0 #42A5F5, stop:1 #2196F3) !important;
-            }
-            QPushButton#scan_button:pressed {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
-                    stop:0 #1976D2, stop:1 #1565C0) !important;
-            }
-            QPushButton#scan_button:disabled {
-                background: #666 !important;
-                color: #999 !important;
-            }
-        """)
+        # Estilos se aplicarán dinámicamente con el tema
         main_layout.addWidget(self.scan_btn)
         
         # Inicializar el texto del botón con el método por defecto
@@ -563,25 +539,29 @@ class DuplicatesDashboard(QWidget):
         header.setSectionsClickable(True)
         header.sectionClicked.connect(self.on_header_clicked)
         
-        # Establecer anchos por defecto
+        # ✅ Establecer anchos predefinidos según especificaciones
         self.default_column_widths = {
             0: 50,   # Checkbox
-            1: 250,  # Nombre
-            2: 300,  # Ubicación
-            3: 100,  # Tamaño
-            4: 140,  # Fecha
-            5: 160,  # Hash
-            6: 90    # Acciones
+            1: 800,  # Nombre - 800px (especificado)
+            2: 300,  # Ubicación - 300px (especificado)
+            3: 180,  # Tamaño - 180px (especificado)
+            4: 180,  # Fecha - 180px (especificado)
+            5: 180,  # Hash - 180px (especificado)
+            6: 180   # Acciones - 180px (especificado)
         }
         
-        # Aplicar anchos por defecto
-        for column, width in self.default_column_widths.items():
-            self.duplicates_table.setColumnWidth(column, width)
+        # Aplicar anchos por defecto inicial
+        self.apply_column_widths()
         
         # Conectar señales
         header.sectionResized.connect(self.on_column_resized)
         header.setSectionsMovable(True)
         header.sectionMoved.connect(self.on_column_moved)
+    
+    def apply_column_widths(self):
+        """✅ Aplica los anchos de columna predefinidos - Se llama después de cargar datos"""
+        for column, width in self.default_column_widths.items():
+            self.duplicates_table.setColumnWidth(column, width)
         
         # Habilitar selección por filas y checkboxes
         self.duplicates_table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
@@ -642,24 +622,31 @@ class DuplicatesDashboard(QWidget):
 
     def on_method_changed(self):
         """Maneja el cambio de método de detección"""
+        from src.utils.themes import ThemeManager
+        from src.utils.app_config import AppConfig
+        
+        app_config = AppConfig()
+        theme = app_config.get_theme()
+        colors = ThemeManager.get_theme_colors(theme)
+        
         method_index = self.method_combo.currentIndex()
         
         if method_index == 0:  # Ultra-rápido
             self.current_method = "fast"
             self.method_info.setText("⚡ ULTRA-RÁPIDO: Compara tamaño + nombre + extensión (hasta 100x más rápido que MD5)")
-            self.method_info.setStyleSheet("color: #2e7d32; font-style: italic; padding: 5px;")
+            self.method_info.setStyleSheet(f"color: {colors['success']}; font-style: italic; padding: 5px;")
             self.scan_btn.setText("🚀 BUSCAR DUPLICADOS (ULTRA-RÁPIDO)")
             
         elif method_index == 1:  # Híbrido
             self.current_method = "hybrid"
             self.method_info.setText("⚖️ HÍBRIDO: Filtro rápido + confirmación MD5 (balance perfecto velocidad/precisión)")
-            self.method_info.setStyleSheet("color: #f57c00; font-style: italic; padding: 5px;")
+            self.method_info.setStyleSheet(f"color: {colors['warning']}; font-style: italic; padding: 5px;")
             self.scan_btn.setText("⚖️ BUSCAR DUPLICADOS (HÍBRIDO)")
             
         else:  # Profundo
             self.current_method = "deep"
             self.method_info.setText("🔍 PROFUNDO: MD5 completo de todo el archivo (100% preciso pero muy lento)")
-            self.method_info.setStyleSheet("color: #d32f2f; font-style: italic; padding: 5px;")
+            self.method_info.setStyleSheet(f"color: {colors['error']}; font-style: italic; padding: 5px;")
             self.scan_btn.setText("🔍 BUSCAR DUPLICADOS (PROFUNDO)")
 
     def on_recursive_changed(self):
@@ -1025,6 +1012,9 @@ class DuplicatesDashboard(QWidget):
             self.duplicates_model.load_full_data(model_data)
             self.update_pagination_controls()
             
+            # ✅ CRÍTICO: Aplicar anchos de columna DESPUÉS de cargar datos
+            self.apply_column_widths()
+            
             self.log_message(f"🚀 Tabla virtualizada lista - Mostrando página 1 de {self.duplicates_model.get_page_info()['total_pages']}")
             
         except Exception as e:
@@ -1036,12 +1026,16 @@ class DuplicatesDashboard(QWidget):
         """🚀 MEJORA: Avanza a la siguiente página"""
         if self.duplicates_model.next_page():
             self.update_pagination_controls()
+            # ✅ Aplicar anchos después de cambiar de página
+            self.apply_column_widths()
             self.log_message(f"📄 Página {self.duplicates_model.get_page_info()['current_page']} cargada")
     
     def go_to_previous_page(self):
         """🚀 MEJORA: Retrocede a la página anterior"""
         if self.duplicates_model.previous_page():
             self.update_pagination_controls()
+            # ✅ Aplicar anchos después de cambiar de página
+            self.apply_column_widths()
             self.log_message(f"📄 Página {self.duplicates_model.get_page_info()['current_page']} cargada")
     
     def update_pagination_controls(self):
@@ -1728,14 +1722,21 @@ class DuplicatesDashboard(QWidget):
             self.log_message(f"❌ Error restaurando columnas: {str(e)}")
     
     def apply_scan_button_style(self):
-        """✅ NUEVO: Reaplica el estilo azul al botón de escaneo para evitar sobrescritura de temas"""
+        """✅ NUEVO: Reaplica el estilo al botón de escaneo usando colores del tema"""
         try:
+            from src.utils.themes import ThemeManager
+            from src.utils.app_config import AppConfig
+            
+            app_config = AppConfig()
+            theme = app_config.get_theme()
+            colors = ThemeManager.get_theme_colors(theme)
+            
             if self.scan_btn.isEnabled():
-                # Solo aplicar estilo azul si el botón está habilitado
-                self.scan_btn.setStyleSheet("""
-                    QPushButton#scan_button {
+                # Aplicar estilo usando colores del tema
+                self.scan_btn.setStyleSheet(f"""
+                    QPushButton#scan_button {{
                         background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
-                            stop:0 #2196F3, stop:1 #1976D2) !important;
+                            stop:0 {colors['primary']}, stop:1 {colors.get('button_pressed', colors['primary'])}) !important;
                         color: white !important;
                         border: none !important;
                         border-radius: 8px !important;
@@ -1743,30 +1744,30 @@ class DuplicatesDashboard(QWidget):
                         font-size: 14px !important;
                         padding: 8px !important;
                         text-transform: uppercase !important;
-                    }
-                    QPushButton#scan_button:hover {
+                    }}
+                    QPushButton#scan_button:hover {{
                         background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
-                            stop:0 #42A5F5, stop:1 #2196F3) !important;
-                    }
-                    QPushButton#scan_button:pressed {
+                            stop:0 {colors.get('button_hover', colors['secondary'])}, stop:1 {colors['primary']}) !important;
+                    }}
+                    QPushButton#scan_button:pressed {{
                         background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
-                            stop:0 #1976D2, stop:1 #1565C0) !important;
-                    }
+                            stop:0 {colors.get('button_pressed', colors['primary'])}, stop:1 {colors.get('button_hover', colors['secondary'])}) !important;
+                    }}
                 """)
-                self.log_message("🔵 Estilo azul aplicado al botón de escaneo")
+                self.log_message("🔵 Estilo aplicado al botón de escaneo con colores del tema")
             else:
-                # Aplicar estilo gris si está deshabilitado
-                self.scan_btn.setStyleSheet("""
-                    QPushButton#scan_button {
-                        background: #666 !important;
-                        color: #999 !important;
+                # Aplicar estilo deshabilitado usando colores del tema
+                self.scan_btn.setStyleSheet(f"""
+                    QPushButton#scan_button {{
+                        background: {colors.get('text_disabled', '#666')} !important;
+                        color: {colors.get('text_secondary', '#999')} !important;
                         border: none !important;
                         border-radius: 8px !important;
                         font-weight: bold !important;
                         font-size: 14px !important;
                         padding: 8px !important;
                         text-transform: uppercase !important;
-                    }
+                    }}
                 """)
         except Exception as e:
             self.log_message(f"❌ Error aplicando estilo al botón: {str(e)}")

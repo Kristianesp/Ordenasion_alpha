@@ -15,24 +15,45 @@ from .themes import ThemeManager
 class ThemeApplier:
     """
     Clase especializada para aplicar temas de forma consistente y completa
+    Sistema centralizado de aplicación de temas - ÚNICO punto de entrada
     """
     
+    _current_theme: Optional[str] = None
+    _current_font_size: int = 12
+    
+    @classmethod
+    def set_current_theme(cls, theme_name: str, font_size: int = 12):
+        """Establece el tema actual para aplicación global"""
+        cls._current_theme = theme_name
+        cls._current_font_size = font_size
+    
+    @classmethod
+    def get_current_theme(cls) -> Optional[str]:
+        """Obtiene el tema actual"""
+        return cls._current_theme
+    
     @staticmethod
-    def apply_theme_to_widget(widget: QWidget, theme_name: str, font_size: int = 12, 
-                            force_override: bool = False) -> bool:
+    def apply_theme_to_widget(widget: QWidget, theme_name: str = None, font_size: int = None, 
+                            force_override: bool = True) -> bool:
         """
         Aplica un tema a un widget de forma completa y forzada
         
         Args:
             widget: Widget al que aplicar el tema
-            theme_name: Nombre del tema
-            font_size: Tamaño de fuente
+            theme_name: Nombre del tema (si es None, usa el tema actual)
+            font_size: Tamaño de fuente (si es None, usa el tamaño actual)
             force_override: Si True, sobrescribe estilos personalizados
         
         Returns:
             bool: True si se aplicó correctamente
         """
         try:
+            # Usar tema actual si no se especifica
+            if theme_name is None:
+                theme_name = ThemeApplier._current_theme or "🌞 Claro Elegante"
+            if font_size is None:
+                font_size = ThemeApplier._current_font_size or 12
+            
             # Obtener colores y estilos del tema
             colors = ThemeManager.get_theme_colors(theme_name)
             palette = ThemeManager.apply_theme_to_palette(theme_name)
@@ -93,19 +114,25 @@ class ThemeApplier:
             print(f"❌ Error aplicando tema a hijos: {e}")
     
     @staticmethod
-    def apply_theme_to_dialog(dialog: QDialog, theme_name: str, font_size: int = 12) -> bool:
+    def apply_theme_to_dialog(dialog: QDialog, theme_name: str = None, font_size: int = None) -> bool:
         """
         Aplica tema a un diálogo de forma completa y forzada
         
         Args:
             dialog: Diálogo al que aplicar el tema
-            theme_name: Nombre del tema
-            font_size: Tamaño de fuente
+            theme_name: Nombre del tema (si es None, usa el tema actual)
+            font_size: Tamaño de fuente (si es None, usa el tamaño actual)
         
         Returns:
             bool: True si se aplicó correctamente
         """
         try:
+            # Usar tema actual si no se especifica
+            if theme_name is None:
+                theme_name = ThemeApplier._current_theme or "🌞 Claro Elegante"
+            if font_size is None:
+                font_size = ThemeApplier._current_font_size or 12
+            
             # Obtener colores del tema
             colors = ThemeManager.get_theme_colors(theme_name)
             
@@ -483,9 +510,9 @@ class ThemeApplier:
             print(f"❌ Error en force_combo_box_refresh: {e}")
     
     @staticmethod
-    def apply_theme_to_application(theme_name: str, font_size: int = 12) -> bool:
+    def apply_theme_globally(theme_name: str, font_size: int = 12) -> bool:
         """
-        Aplica tema a toda la aplicación de forma completa
+        Aplica tema a toda la aplicación de forma completa (MÉTODO PRINCIPAL)
         
         Args:
             theme_name: Nombre del tema
@@ -495,6 +522,9 @@ class ThemeApplier:
             bool: True si se aplicó correctamente
         """
         try:
+            # Establecer tema actual
+            ThemeApplier.set_current_theme(theme_name, font_size)
+            
             app = QApplication.instance()
             if not app:
                 return False
@@ -513,8 +543,8 @@ class ThemeApplier:
                 if isinstance(widget, QWidget):
                     try:
                         widget.setPalette(palette)
-                        if not widget.styleSheet():
-                            widget.setStyleSheet(css_styles)
+                        # Forzar actualización de estilos
+                        ThemeApplier.apply_theme_to_widget(widget, theme_name, font_size, force_override=True)
                     except Exception:
                         continue
             
@@ -526,7 +556,15 @@ class ThemeApplier:
         except Exception as e:
             print(f"❌ Error aplicando tema a aplicación: {e}")
             return False
+    
+    # Alias para compatibilidad
+    @staticmethod
+    def apply_theme_to_application(theme_name: str, font_size: int = 12) -> bool:
+        """Alias para apply_theme_globally (compatibilidad)"""
+        return ThemeApplier.apply_theme_globally(theme_name, font_size)
 
 
-# Instancia global del aplicador de temas
+# Nota: ThemeApplier usa solo métodos estáticos/de clase
+# No es necesario crear una instancia, pero la mantenemos por compatibilidad
+# ⚠️ OPTIMIZACIÓN: Esta instancia no causa problemas porque __init__ no hace nada
 theme_applier = ThemeApplier()

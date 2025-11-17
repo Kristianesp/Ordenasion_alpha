@@ -155,29 +155,50 @@ class DiskManager:
                 
                 # Obtener información completa del disco
                 try:
-                    smart_data = self.smartctl.get_disk_smart_data(
-                        physical_drive,
-                        timeout=3,
-                        max_retries=0,
-                        device_type=device_type
-                    )
+                    # Primero obtener tamaño (más rápido y necesario para mapeo)
+                    disk_size = self._get_disk_size_from_smartctl(physical_drive, device_type)
                     
+                    # Luego intentar obtener datos SMART (puede fallar, pero no es crítico para mapeo)
+                    smart_data = None
+                    try:
+                        smart_data = self.smartctl.get_disk_smart_data(
+                            physical_drive,
+                            timeout=3,
+                            max_retries=0,
+                            device_type=device_type
+                        )
+                    except Exception:
+                        # Si falla obtener SMART, continuar sin datos SMART
+                        pass
+                    
+                    # Usar modelo de smart_data si está disponible, sino usar nombre básico
                     if smart_data:
-                        model = smart_data.get('disk_model', 'Desconocido')
-                        # Obtener tamaño del disco usando smartctl -i
-                        disk_size = self._get_disk_size_from_smartctl(physical_drive, device_type)
-                        
-                        disk_info_map[physical_drive] = {
-                            'model': model,
-                            'device': device,
-                            'type': device_type,
-                            'size': disk_size,
-                            'smart_data': smart_data
-                        }
-                        debug(f"  Disco {physical_drive}: {model} ({disk_size / 1024**3:.1f} GB)")
+                        model = smart_data.get('disk_model', f'Disco {physical_drive}')
+                    else:
+                        model = f'Disco {physical_drive}'
+                    
+                    # Agregar al mapa aunque no tenga datos SMART (el mapeo es lo importante)
+                    disk_info_map[physical_drive] = {
+                        'model': model,
+                        'device': device,
+                        'type': device_type,
+                        'size': disk_size,
+                        'smart_data': smart_data  # Puede ser None
+                    }
+                    debug(f"  Disco {physical_drive}: {model} ({disk_size / 1024**3:.1f} GB)")
                 except Exception as e:
                     debug(f"Error obteniendo info de {physical_drive}: {e}")
-                    continue
+                    # Aún así, agregar información básica para permitir mapeo
+                    try:
+                        disk_info_map[physical_drive] = {
+                            'model': f'Disco {physical_drive}',
+                            'device': device,
+                            'type': device_type,
+                            'size': 0,  # No se pudo obtener tamaño
+                            'smart_data': None
+                        }
+                    except:
+                        continue
             
             # Obtener todas las particiones del sistema con sus tamaños
             partitions = psutil.disk_partitions()
@@ -260,7 +281,8 @@ class DiskManager:
                                 'score': 0.3  # Score bajo porque no hay buena coincidencia
                             }
                             used_physical_drives.add(physical_drive)
-                            warn(f"⚠️ Mapeado aproximado: {drive_key} -> {physical_drive} ({disk_data['model']})")
+                            # Mensaje menos alarmante - es normal cuando no hay coincidencia exacta
+                            debug(f"ℹ️ Mapeo aproximado: {drive_key} -> {physical_drive} ({disk_data['model']}) [score: 0.3]")
                             break
             
             if drive_map:

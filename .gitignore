@@ -1,5 +1,6 @@
 # Python
 __pycache__/
+**/__pycache__/
 *.py[cod]
 *$py.class
 *.so
@@ -42,17 +43,41 @@ Thumbs.db
 *.spec.bak
 backup_log.txt
 hash_cache.db
+startup_log.txt
+operations_log.json
 
-# Compiled
+# Compiled / Build artifacts
 *.exe
 *.dll
 *.pyd
+*.zip
+*.pkg
+build/
+dist/
 
 # Testing
 .pytest_cache/
 .coverage
 htmlcov/
+test_*_debug.py
+test_importacion_arreglada.py
+test_lazy_initialization.py
 
 # PyInstaller
+*.spec
 *.spec.bak
+*_pyinstaller_imports.py
+
+# Scripts de compilación
+*.bat
+compilar*.bat
+compile*.bat
+descargar*.bat
+
+# Archivos temporales y de desarrollo
+*_debug.py
+*_old.py
+*_backup.py
+*.bak
+*.tmp
 

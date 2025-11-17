@@ -207,7 +207,10 @@ class CategoryManager:
     def load_configuration(self) -> bool:
         """Carga la configuración desde archivo JSON"""
         try:
-            if Path(self.config_file).exists():
+            # ⚠️ CRÍTICO: En .exe, los archivos pueden no estar disponibles durante __init__
+            # Si falla, continuar con configuración por defecto
+            config_path = Path(self.config_file)
+            if config_path.exists():
                 with open(self.config_file, 'r', encoding='utf-8') as f:
                     config_data = json.load(f)
 

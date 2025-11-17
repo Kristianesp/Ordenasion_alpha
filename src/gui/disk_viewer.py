@@ -68,56 +68,61 @@ class DiskViewer(QWidget):
         """Inicializa la interfaz de usuario con diseño ultra compacto y eficiente"""
         main_layout = QVBoxLayout(self)
         main_layout.setSpacing(0)  # SIN espaciado - log completamente pegado abajo
-        main_layout.setContentsMargins(4, 4, 4, 0)  # SIN margen inferior - log pegado abajo
+        main_layout.setContentsMargins(4, 0, 4, 0)  # Sin margen superior para pegar arriba
         
         # Establecer política de tamaño para evitar redimensionamiento automático
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         self.setMinimumSize(930, 500)  # Reducido de 600 a 500 para más compacto
         
-        # Header unificado con título y controles en la misma fila - ULTRA COMPACTO
-        unified_header = QGroupBox("🖥️ INFORMACIÓN DEL SISTEMA")
+        # Header unificado - DISEÑO SIMPLIFICADO sin QGroupBox
+        unified_header = QFrame()
         unified_header.setToolTip("🖥️ Muestra información en tiempo real del sistema: CPU, RAM, estado de seguridad y discos monitoreados")
         unified_header.setObjectName("system_info_group")
-        unified_header.setMaximumHeight(35)  # Ultra compacto - reducido de 50 a 35
-        unified_header.setMinimumHeight(30)  # Altura mínima ultra compacta - reducido de 40 a 30
+        unified_header.setFrameShape(QFrame.Shape.Box)
+        unified_header.setLineWidth(0)
+        unified_header.setMinimumHeight(45)  # Altura fija compacta
+        unified_header.setMaximumHeight(45)  # Altura fija para evitar variaciones
         
-        # Layout horizontal para título y controles en la misma fila
+        # Layout horizontal para información y controles
         unified_layout = QHBoxLayout(unified_header)
-        unified_layout.setContentsMargins(2, 0, 2, 0)  # Márgenes ultra reducidos - SIN padding vertical
-        unified_layout.setSpacing(4)  # Espaciado mínimo
+        unified_layout.setContentsMargins(10, 6, 10, 6)  # Márgenes compactos
+        unified_layout.setSpacing(12)  # Espaciado adecuado
         
-        # Información del sistema a la izquierda
+        # Título simple a la izquierda
+        title_label = QLabel("🖥️ INFORMACIÓN DEL SISTEMA:")
+        title_label.setObjectName("system_info_title")
+        title_label.setStyleSheet("font-weight: bold; font-size: 12px;")
+        unified_layout.addWidget(title_label)
+        
+        # Información del sistema
         self.system_info_label = QLabel("Cargando información del sistema...")
         self.system_info_label.setObjectName("system_info_label")
-        self.system_info_label.setWordWrap(True)
-        self.system_info_label.setMaximumHeight(25)  # Altura ultra compacta - reducido de 30 a 25
-        unified_layout.addWidget(self.system_info_label)
+        self.system_info_label.setWordWrap(False)  # Sin wrap para mantener en una línea
+        unified_layout.addWidget(self.system_info_label, stretch=1)  # Stretch para que use el espacio disponible
         
         # Espacio para empujar controles a la derecha
         unified_layout.addStretch()
         
-        # Controles de modo seguro compactos
+        # Controles de modo seguro
         safe_mode_label = QLabel("🛡️ Modo Seguro:")
         safe_mode_label.setToolTip("🛡️ Configuración de seguridad para proteger los datos del sistema")
         safe_mode_label.setObjectName("safe_mode_label")
-        safe_mode_label.setMaximumHeight(18)  # Ultra compacto - reducido de 20 a 18
         unified_layout.addWidget(safe_mode_label)
         
         self.safe_mode_checkbox = QCheckBox("Solo Lectura")
         self.safe_mode_checkbox.setToolTip("🛡️ Cuando está activado, solo permite análisis y visualización sin modificar archivos")
         self.safe_mode_checkbox.setChecked(True)
         self.safe_mode_checkbox.setObjectName("safe_mode_checkbox")
-        self.safe_mode_checkbox.setMaximumHeight(18)  # Ultra compacto - reducido de 20 a 18
         self.safe_mode_checkbox.toggled.connect(self.on_safe_mode_changed)
         unified_layout.addWidget(self.safe_mode_checkbox)
         
-        # Botón de refresh compacto
+        # Botón de refresh
         self.refresh_btn = QPushButton("🔄 Actualizar")
         self.refresh_btn.setToolTip("🔄 Actualiza la información de discos")
         self.refresh_btn.setObjectName("refresh_btn")
         self.refresh_btn.clicked.connect(self.refresh_disks)
-        self.refresh_btn.setFixedHeight(20)  # Ultra compacto - reducido de 24 a 20
-        self.refresh_btn.setFixedWidth(90)  # Ancho fijo compacto
+        self.refresh_btn.setFixedHeight(26)  # Altura compacta
+        self.refresh_btn.setFixedWidth(90)  # Ancho fijo
         unified_layout.addWidget(self.refresh_btn)
         
         main_layout.addWidget(unified_header)
@@ -318,34 +323,8 @@ class DiskViewer(QWidget):
         self.analysis_scroll_area.setMaximumHeight(500)  # Altura máxima para pantallas 1080p
         self.analysis_scroll_area.setObjectName("analysis_scroll_area")
         
-        # Aplicar estilos al scroll area para que se vea bien con el tema
-        self.analysis_scroll_area.setStyleSheet("""
-            QScrollArea {
-                border: 1px solid var(--border-color);
-                border-radius: 8px;
-                background-color: var(--background);
-            }
-            QScrollArea > QWidget > QWidget {
-                background-color: transparent;
-            }
-            QScrollBar:vertical {
-                background-color: var(--surface);
-                width: 12px;
-                border-radius: 6px;
-            }
-            QScrollBar::handle:vertical {
-                background-color: var(--primary);
-                border-radius: 6px;
-                min-height: 20px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background-color: var(--accent);
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                border: none;
-                background: none;
-            }
-        """)
+        # Aplicar estilos al scroll area - se aplicarán dinámicamente con el tema
+        # Los estilos se aplicarán en apply_theme_styles()
         
         main_layout.addWidget(self.analysis_scroll_area)
         
@@ -353,24 +332,13 @@ class DiskViewer(QWidget):
         # Las métricas SMART se moverán junto a TOTAL USADO LIBRE
         
         # ===== TARJETA DE ESPACIO DE ANCHO COMPLETO =====
-        space_card_full = QFrame()
-        space_card_full.setObjectName("space_card_full")
-        space_card_full.setMaximumHeight(75)  # Reducido de 90 a 75px
-        space_card_full.setMinimumHeight(65)  # Reducido de 80 a 65px
-        space_card_full.setStyleSheet("""
-            QFrame {
-                background-color: var(--card-bg);
-                border: 1px solid var(--border-color);
-                border-radius: 8px;  /* Reducido de 12px a 8px */
-                padding: 4px;  /* Reducido de 8px a 4px */
-                margin: 2px 0 0 0;  /* SIN margen inferior - log pegado abajo */
-            }
-            QFrame:hover {
-                border: 2px solid var(--accent-color);
-            }
-        """)
+        self.space_card_full = QFrame()
+        self.space_card_full.setObjectName("space_card_full")
+        self.space_card_full.setMaximumHeight(75)  # Reducido de 90 a 75px
+        self.space_card_full.setMinimumHeight(65)  # Reducido de 80 a 65px
+        # Estilos se aplicarán dinámicamente con el tema en apply_theme_styles()
         
-        space_card_layout = QHBoxLayout(space_card_full)
+        space_card_layout = QHBoxLayout(self.space_card_full)
         space_card_layout.setSpacing(8)  # Espaciado ultra reducido de 20 a 8
         space_card_layout.setContentsMargins(2, 0, 2, 0)  # SIN padding vertical, solo lateral mínimo
         
@@ -379,17 +347,10 @@ class DiskViewer(QWidget):
         progress_section.setSpacing(2)  # Espaciado ultra reducido de 6 a 2
         progress_section.setContentsMargins(0, 0, 0, 0)  # SIN paddings
         
-        progress_label = QLabel("📊 Porcentaje de Uso:")
-        progress_label.setObjectName("space_section_label")
-        progress_label.setStyleSheet("""
-            QLabel {
-                color: var(--accent-color);
-                font-weight: bold;
-                font-size: 12px;
-                text-align: center;
-            }
-        """)
-        progress_section.addWidget(progress_label)
+        self.progress_label = QLabel("📊 Porcentaje de Uso:")
+        self.progress_label.setObjectName("space_section_label")
+        # Estilos se aplicarán dinámicamente con el tema en apply_theme_styles()
+        progress_section.addWidget(self.progress_label)
         
         # Barra de progreso mejorada
         self.usage_progress_bar = QProgressBar()
@@ -397,24 +358,7 @@ class DiskViewer(QWidget):
         self.usage_progress_bar.setRange(0, 100)
         self.usage_progress_bar.setValue(0)
         self.usage_progress_bar.setToolTip("📊 Barra visual del porcentaje de uso del disco")
-        self.usage_progress_bar.setStyleSheet("""
-            QProgressBar {
-                border: 2px solid var(--border-color);
-                border-radius: 10px;
-                text-align: center;
-                font-weight: bold;
-                font-size: 12px;
-                min-height: 16px;
-                max-height: 16px;
-                background-color: var(--bg-color);
-            }
-            QProgressBar::chunk {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
-                    stop:0 var(--accent-color), 
-                    stop:1 var(--accent-color));
-                border-radius: 8px;
-            }
-        """)
+        # Estilos se aplicarán dinámicamente con el tema en apply_theme_styles()
         progress_section.addWidget(self.usage_progress_bar)
         
         # Porcentaje de uso eliminado - la barra de progreso es suficiente
@@ -432,30 +376,12 @@ class DiskViewer(QWidget):
         total_layout.setContentsMargins(0, 0, 0, 0)  # SIN paddings
         total_label = QLabel("💾 TOTAL")
         total_label.setObjectName("space_section_label")
-        total_label.setStyleSheet("""
-            QLabel {
-                color: var(--accent-color);
-                font-weight: bold;
-                font-size: 11px;
-                text-align: center;
-            }
-        """)
+        # Estilos se aplicarán dinámicamente con el tema en apply_theme_styles()
         total_layout.addWidget(total_label)
         
         self.total_size_label = QLabel("0 GB")
         self.total_size_label.setObjectName("space_value_label")
-        self.total_size_label.setStyleSheet("""
-            QLabel {
-                color: var(--text-color);
-                font-weight: bold;
-                font-size: 12px;
-                text-align: center;
-                padding: 4px 8px;
-                background-color: var(--bg-color);
-                border-radius: 4px;
-                border: 1px solid var(--border-color);
-            }
-        """)
+        # Estilos se aplicarán dinámicamente con el tema en apply_theme_styles()
         total_layout.addWidget(self.total_size_label)
         sizes_section.addLayout(total_layout)
         
@@ -465,30 +391,12 @@ class DiskViewer(QWidget):
         used_layout.setContentsMargins(0, 0, 0, 0)  # SIN paddings
         used_label = QLabel("📊 USADO")
         used_label.setObjectName("space_section_label")
-        used_label.setStyleSheet("""
-            QLabel {
-                color: var(--error-color, #e74c3c);
-                font-weight: bold;
-                font-size: 11px;
-                text-align: center;
-            }
-        """)
+        # Estilos se aplicarán dinámicamente con el tema en apply_theme_styles()
         used_layout.addWidget(used_label)
         
         self.used_size_label = QLabel("0 GB")
         self.used_size_label.setObjectName("space_value_label")
-        self.used_size_label.setStyleSheet("""
-            QLabel {
-                color: var(--text-color);
-                font-weight: bold;
-                font-size: 12px;
-                text-align: center;
-                padding: 4px 8px;
-                background-color: var(--bg-color);
-                border-radius: 4px;
-                border: 1px solid var(--border-color);
-            }
-        """)
+        # Estilos se aplicarán dinámicamente con el tema en apply_theme_styles()
         used_layout.addWidget(self.used_size_label)
         sizes_section.addLayout(used_layout)
         
@@ -498,30 +406,12 @@ class DiskViewer(QWidget):
         free_layout.setContentsMargins(0, 0, 0, 0)  # SIN paddings
         free_label = QLabel("💚 LIBRE")
         free_label.setObjectName("space_section_label")
-        free_label.setStyleSheet("""
-            QLabel {
-                color: var(--success-color, #27ae60);
-                font-weight: bold;
-                font-size: 11px;
-                text-align: center;
-            }
-        """)
+        # Estilos se aplicarán dinámicamente con el tema en apply_theme_styles()
         free_layout.addWidget(free_label)
         
         self.free_size_label = QLabel("0 GB")
         self.free_size_label.setObjectName("space_value_label")
-        self.free_size_label.setStyleSheet("""
-            QLabel {
-                color: var(--text-color);
-                font-weight: bold;
-                font-size: 12px;
-                text-align: center;
-                padding: 4px 8px;
-                background-color: var(--bg-color);
-                border-radius: 4px;
-                border: 1px solid var(--border-color);
-            }
-        """)
+        # Estilos se aplicarán dinámicamente con el tema en apply_theme_styles()
         free_layout.addWidget(self.free_size_label)
         sizes_section.addLayout(free_layout)
         
@@ -622,7 +512,7 @@ class DiskViewer(QWidget):
         # Añadir stretch para centrar el contenido
         space_card_layout.addStretch()
         
-        main_layout.addWidget(space_card_full)
+        main_layout.addWidget(self.space_card_full)
         
         # Log de operaciones - PEGADO ABAJO DEL TODO SIN MÁRGENES
         log_layout = QHBoxLayout()
@@ -1667,6 +1557,125 @@ class DiskViewer(QWidget):
     def apply_static_interface_styles(self, theme_name: str, colors: dict):
         """Aplica estilos del tema a todos los elementos estáticos de la interfaz"""
         try:
+            # 0. Header del sistema (INFORMACIÓN DEL SISTEMA) - DISEÑO SIMPLIFICADO
+            if hasattr(self, 'system_info_group') or hasattr(self, 'unified_header'):
+                header_widget = getattr(self, 'unified_header', None) or getattr(self, 'system_info_group', None)
+                if header_widget:
+                    header_widget.setStyleSheet(f"""
+                        QFrame {{
+                            background-color: {colors['surface']} !important;
+                            border: 1px solid {colors['border']} !important;
+                            border-radius: 6px;
+                            margin-top: 0px !important;
+                            margin-bottom: 0px;
+                        }}
+                    """)
+            
+            # 0.1. Título del sistema
+            for widget in self.findChildren(QLabel):
+                if widget.objectName() == "system_info_title":
+                    widget.setStyleSheet(f"""
+                        QLabel {{
+                            color: {colors['text_primary']} !important;
+                            background-color: transparent;
+                            font-size: 12px;
+                            font-weight: bold;
+                            padding: 0px 5px;
+                        }}
+                    """)
+            
+            # 0.2. Label de información del sistema
+            if hasattr(self, 'system_info_label') and self.system_info_label:
+                self.system_info_label.setStyleSheet(f"""
+                    QLabel {{
+                        color: {colors['text_primary']} !important;
+                        background-color: transparent;
+                        font-size: 12px;
+                        font-weight: normal;
+                        padding: 0px 5px;
+                    }}
+                """)
+            
+            # 0.3. Labels de modo seguro
+            for widget in self.findChildren(QLabel):
+                if widget.objectName() == "safe_mode_label":
+                    widget.setStyleSheet(f"""
+                        QLabel {{
+                            color: {colors['text_primary']} !important;
+                            background-color: transparent;
+                            font-size: 11px;
+                            padding: 0px 3px;
+                        }}
+                    """)
+            
+            # 0.4. Checkbox de modo seguro
+            if hasattr(self, 'safe_mode_checkbox') and self.safe_mode_checkbox:
+                self.safe_mode_checkbox.setStyleSheet(f"""
+                    QCheckBox {{
+                        color: {colors['text_primary']} !important;
+                        background-color: transparent;
+                        font-size: 11px;
+                        padding: 0px 3px;
+                    }}
+                    QCheckBox::indicator {{
+                        width: 14px;
+                        height: 14px;
+                        border: 1px solid {colors['border']};
+                        border-radius: 3px;
+                        background-color: {colors['surface']};
+                    }}
+                    QCheckBox::indicator:checked {{
+                        background-color: {colors['primary']};
+                        border-color: {colors['primary']};
+                    }}
+                """)
+            
+            # 0.5. Botón de refresh
+            if hasattr(self, 'refresh_btn') and self.refresh_btn:
+                self.refresh_btn.setStyleSheet(f"""
+                    QPushButton {{
+                        background-color: {colors['primary']} !important;
+                        color: white !important;
+                        border: none !important;
+                        border-radius: 4px;
+                        font-size: 11px;
+                        font-weight: bold;
+                        padding: 4px 10px;
+                    }}
+                    QPushButton:hover {{
+                        background-color: {colors.get('button_hover', colors['secondary'])} !important;
+                    }}
+                    QPushButton:pressed {{
+                        background-color: {colors.get('button_pressed', colors['accent'])} !important;
+                    }}
+                """)
+            
+            # 0.5. Botones de acción (select_btn - "🔍 Analizar")
+            # Aplicar a todos los botones con objectName "select_btn"
+            for widget in self.findChildren(QPushButton):
+                if widget.objectName() == "select_btn":
+                    widget.setStyleSheet(f"""
+                        QPushButton {{
+                            background-color: {colors['primary']} !important;
+                            color: white !important;
+                            border: none !important;
+                            border-radius: 6px;
+                            font-size: 11px;
+                            font-weight: bold;
+                            padding: 6px 12px;
+                        }}
+                        QPushButton:hover {{
+                            background-color: {colors.get('button_hover', colors['secondary'])} !important;
+                        }}
+                        QPushButton:pressed {{
+                            background-color: {colors.get('button_pressed', colors['accent'])} !important;
+                        }}
+                        QPushButton:disabled {{
+                            background-color: {colors.get('text_disabled', '#bdbdbd')} !important;
+                            color: {colors.get('text_secondary', '#999')} !important;
+                        }}
+                    """)
+            
             # 1. Grupo principal de análisis
             if hasattr(self, 'analysis_group') and self.analysis_group:
                 self.analysis_group.setStyleSheet(f"""
@@ -1782,7 +1791,118 @@ class DiskViewer(QWidget):
                                 font-size: 12px;
                                 text-align: center;
                                 padding: 4px 8px;
-                                background-color: {colors['background']};
+                                background-color: {colors['surface']};
+                                border-radius: 4px;
+                                border: 1px solid {colors['border']};
+                            }}
+                        """)
+            
+            # 6. Scroll area de análisis
+            if hasattr(self, 'analysis_scroll_area') and self.analysis_scroll_area:
+                self.analysis_scroll_area.setStyleSheet(f"""
+                    QScrollArea {{
+                        border: 1px solid {colors['border']};
+                        border-radius: 8px;
+                        background-color: {colors['background']};
+                    }}
+                    QScrollArea > QWidget > QWidget {{
+                        background-color: transparent;
+                    }}
+                    QScrollBar:vertical {{
+                        background-color: {colors['surface']};
+                        width: 12px;
+                        border-radius: 6px;
+                    }}
+                    QScrollBar::handle:vertical {{
+                        background-color: {colors['primary']};
+                        border-radius: 6px;
+                        min-height: 20px;
+                    }}
+                    QScrollBar::handle:vertical:hover {{
+                        background-color: {colors['accent']};
+                    }}
+                    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+                        border: none;
+                        background: none;
+                    }}
+                """)
+            
+            # 7. Tarjeta de espacio
+            if hasattr(self, 'space_card_full') and self.space_card_full:
+                self.space_card_full.setStyleSheet(f"""
+                    QFrame {{
+                        background-color: {colors['surface']};
+                        border: 1px solid {colors['border']};
+                        border-radius: 8px;
+                        padding: 4px;
+                        margin: 2px 0 0 0;
+                    }}
+                    QFrame:hover {{
+                        border: 2px solid {colors['accent']};
+                    }}
+                """)
+            
+            # 8. Labels de sección de espacio (TOTAL, USADO, LIBRE)
+            if hasattr(self, 'progress_label') and self.progress_label:
+                self.progress_label.setStyleSheet(f"""
+                    QLabel {{
+                        color: {colors['accent']} !important;
+                        font-weight: bold;
+                        font-size: 12px;
+                        text-align: center;
+                    }}
+                """)
+            
+            # Buscar labels de sección por objectName
+            for widget in self.findChildren(QLabel):
+                if widget.objectName() == "space_section_label":
+                    if 'TOTAL' in widget.text():
+                        widget.setStyleSheet(f"""
+                            QLabel {{
+                                color: {colors['accent']} !important;
+                                font-weight: bold;
+                                font-size: 11px;
+                                text-align: center;
+                            }}
+                        """)
+                    elif 'USADO' in widget.text():
+                        widget.setStyleSheet(f"""
+                            QLabel {{
+                                color: {colors['error']} !important;
+                                font-weight: bold;
+                                font-size: 11px;
+                                text-align: center;
+                            }}
+                        """)
+                    elif 'LIBRE' in widget.text():
+                        widget.setStyleSheet(f"""
+                            QLabel {{
+                                color: {colors['success']} !important;
+                                font-weight: bold;
+                                font-size: 11px;
+                                text-align: center;
+                            }}
+                        """)
+            
+            # 9. Labels de valores de espacio (total_size_label, used_size_label, free_size_label)
+            space_value_labels = [
+                ('total_size_label', colors['text_primary']),
+                ('used_size_label', colors['text_primary']),
+                ('free_size_label', colors['text_primary'])
+            ]
+            
+            for label_name, text_color in space_value_labels:
+                if hasattr(self, label_name):
+                    label = getattr(self, label_name)
+                    if label:
+                        label.setStyleSheet(f"""
+                            QLabel {{
+                                color: {text_color} !important;
+                                font-weight: bold;
+                                font-size: 12px;
+                                text-align: center;
+                                padding: 4px 8px;
+                                background-color: {colors['surface']};
                                 border-radius: 4px;
                                 border: 1px solid {colors['border']};
                             }}
@@ -1826,10 +1946,20 @@ class DiskViewer(QWidget):
             # Obtener colores del tema
             colors = ThemeManager.get_theme_colors(theme_name)
             
-            # PASO 0: Aplicar estilos compactos específicos para Disk Viewer
+            # PASO 0: LIMPIAR estilos anteriores primero
+            # Limpiar estilos de todos los widgets para evitar mezcla de temas
+            from PyQt6.QtWidgets import QWidget, QPushButton, QLabel, QGroupBox, QCheckBox
+            for widget in self.findChildren(QWidget):
+                try:
+                    # No limpiar completamente, solo resetear paleta
+                    widget.setStyleSheet("")
+                except:
+                    pass
+            
+            # PASO 1: Aplicar estilos compactos específicos para Disk Viewer
             self.apply_compact_disk_viewer_styles(theme_name, colors)
             
-            # PASO 1: Aplicar estilos a elementos estáticos de la interfaz
+            # PASO 2: Aplicar estilos a elementos estáticos de la interfaz
             self.apply_static_interface_styles(theme_name, colors)
             
             # Aplicar estilos a los labels de información básica

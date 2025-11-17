@@ -405,15 +405,25 @@ class ThemeManager:
 
     @classmethod
     def get_theme_colors(cls, theme_name: str) -> Dict[str, str]:
-        """Obtiene los colores de un tema específico"""
+        """Obtiene los colores de un tema específico CON CACHÉ"""
+        # ✅ OPTIMIZACIÓN: Intentar obtener del caché primero
+        from .theme_cache import theme_cache
+        cached_colors = theme_cache.get_colors(theme_name)
+        if cached_colors:
+            return cached_colors
+        
         # Verificar si el tema existe por nombre exacto
         if theme_name in cls.THEMES:
-            return cls.THEMES[theme_name]["colors"]
+            colors = cls.THEMES[theme_name]["colors"]
+            theme_cache.set_colors(theme_name, colors)
+            return colors
         
         # Verificar por nombre interno (name)
         for theme_data in cls.THEMES.values():
             if theme_data["name"] == theme_name:
-                return theme_data["colors"]
+                colors = theme_data["colors"]
+                theme_cache.set_colors(theme_name, colors)
+                return colors
 
         # Compatibilidad con nombres antiguos
         theme_mapping = {
@@ -427,12 +437,16 @@ class ThemeManager:
             mapped_theme = theme_mapping[theme_name]
             from .logger import info
             info(f"Mapeando tema '{theme_name}' → '{mapped_theme}'")
-            return cls.THEMES[mapped_theme]["colors"]
+            colors = cls.THEMES[mapped_theme]["colors"]
+            theme_cache.set_colors(theme_name, colors)
+            return colors
 
         # Si no se encuentra el tema, mostrar advertencia y usar el tema por defecto
         from .logger import warn
         warn(f"Tema '{theme_name}' no encontrado. Usando '🌞 Claro Elegante' por defecto.")
-        return cls.THEMES["🌞 Claro Elegante"]["colors"]
+        colors = cls.THEMES["🌞 Claro Elegante"]["colors"]
+        theme_cache.set_colors(theme_name, colors)
+        return colors
 
     @classmethod
     def get_theme_names(cls) -> list:
@@ -456,7 +470,13 @@ class ThemeManager:
 
     @classmethod
     def apply_theme_to_palette(cls, theme_name: str) -> QPalette:
-        """Aplica un tema a una paleta de Qt"""
+        """Aplica un tema a una paleta de Qt CON CACHÉ"""
+        # ✅ OPTIMIZACIÓN: Intentar obtener del caché primero
+        from .theme_cache import theme_cache
+        cached_palette = theme_cache.get_palette(theme_name)
+        if cached_palette:
+            return cached_palette
+        
         colors = cls.get_theme_colors(theme_name)
         palette = QPalette()
         
@@ -475,13 +495,82 @@ class ThemeManager:
         palette.setColor(QPalette.ColorRole.Highlight, QColor(colors["primary"]))
         palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
         
+        # ✅ Guardar en caché
+        theme_cache.set_palette(theme_name, palette)
+        
         return palette
 
     @classmethod
     def get_css_styles(cls, theme_name: str, font_size: int = 12) -> str:
-        """Genera estilos CSS modernos usando el sistema actualizado"""
+        """Genera estilos CSS modernos CON CACHÉ - OPTIMIZADO"""
+        # ✅ OPTIMIZACIÓN CRÍTICA: Intentar obtener del caché primero
+        from .theme_cache import theme_cache
+        cached_css = theme_cache.get_css(theme_name, font_size)
+        if cached_css:
+            return cached_css
+        
+        # Si no está en caché, generar y cachear
         colors = cls.get_theme_colors(theme_name)
-        return get_modern_css_styles(colors, font_size)
+        css = get_modern_css_styles(colors, font_size)
+        theme_cache.set_css(theme_name, font_size, css)
+        return css
+    
+    @classmethod
+    def get_theme_color(cls, theme_name: str, color_key: str, fallback: str = "#000000") -> str:
+        """
+        Obtiene un color específico del tema de forma segura
+        
+        Args:
+            theme_name: Nombre del tema
+            color_key: Clave del color (ej: 'primary', 'background', 'text_primary')
+            fallback: Color de respaldo si no se encuentra
+        
+        Returns:
+            str: Color en formato hexadecimal
+        """
+        colors = cls.get_theme_colors(theme_name)
+        return colors.get(color_key, fallback)
+    
+    @classmethod
+    def get_semantic_color(cls, theme_name: str, semantic: str) -> str:
+        """
+        Obtiene un color semántico del tema (success, error, warning, info)
+        
+        Args:
+            theme_name: Nombre del tema
+            semantic: Tipo semántico ('success', 'error', 'warning', 'info')
+        
+        Returns:
+            str: Color en formato hexadecimal
+        """
+        colors = cls.get_theme_colors(theme_name)
+        semantic_map = {
+            'success': colors.get('success', '#388e3c'),
+            'error': colors.get('error', '#d32f2f'),
+            'warning': colors.get('warning', '#f57c00'),
+            'info': colors.get('info', colors.get('primary', '#1976d2'))
+        }
+        return semantic_map.get(semantic, colors.get('primary', '#1976d2'))
+    
+    @classmethod
+    def format_css_with_theme(cls, theme_name: str, css_template: str) -> str:
+        """
+        Formatea un template CSS reemplazando variables de tema
+        
+        Args:
+            theme_name: Nombre del tema
+            css_template: Template CSS con placeholders {color_key}
+        
+        Returns:
+            str: CSS formateado con colores del tema
+        """
+        colors = cls.get_theme_colors(theme_name)
+        try:
+            return css_template.format(**colors)
+        except KeyError as e:
+            from .logger import warn
+            warn(f"Color no encontrado en template CSS: {e}")
+            return css_template
 
 
 # Compatibilidad con código legacy

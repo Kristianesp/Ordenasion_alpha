@@ -38,49 +38,119 @@ class FileOrganizerGUI(QMainWindow):
     """Ventana principal del organizador de archivos"""
     
     def __init__(self):
-        super().__init__()
+        try:
+            print("[MainWindow] Iniciando __init__...")
+            print("[MainWindow] Llamando super().__init__()...")
+            super().__init__()
+            print("[MainWindow] super().__init__() OK")
+        except Exception as e:
+            print(f"[MainWindow] ERROR en super().__init__(): {e}")
+            import traceback
+            traceback.print_exc()
+            raise
         
         # === ESTADO CENTRALIZADO ===
-        # Usar componentes del estado centralizado
-        self.category_manager = app_state.category_manager
-        self.app_config = app_state.app_config
+        # Usar componentes del estado centralizado con manejo de errores
+        print("[MainWindow] Obteniendo category_manager...")
+        try:
+            self.category_manager = app_state.category_manager
+            if self.category_manager is None:
+                print("[MainWindow] ⚠️ category_manager es None, creando uno nuevo...")
+                from src.core.category_manager import CategoryManager
+                self.category_manager = CategoryManager()
+            print("[MainWindow] category_manager OK")
+        except Exception as e:
+            print(f"[MainWindow] ⚠️ ERROR obteniendo category_manager: {e}")
+            from src.core.category_manager import CategoryManager
+            self.category_manager = CategoryManager()
+        
+        print("[MainWindow] Obteniendo app_config...")
+        try:
+            self.app_config = app_state.app_config
+            if self.app_config is None:
+                print("[MainWindow] ⚠️ app_config es None, creando uno nuevo...")
+                from src.utils.app_config import AppConfig
+                self.app_config = AppConfig()
+            print("[MainWindow] app_config OK")
+        except Exception as e:
+            print(f"[MainWindow] ⚠️ ERROR obteniendo app_config: {e}")
+            from src.utils.app_config import AppConfig
+            self.app_config = AppConfig()
+        
         self.disk_manager = None  # Se obtendrá de app_state cuando se necesite
         
         # === DATOS LOCALES ===
         self.folder_movements = []
         self.file_movements = []
         self.duplicates_dashboard = None
+        self._active_workers = []  # Lista de workers activos para limpieza
         
         # === CONFIGURACIÓN PERSISTENTE ===
+        print("[MainWindow] Creando QSettings...")
         self.settings = QSettings("FileOrganizer", "MainWindow")
+        print("[MainWindow] QSettings OK")
         
         # === INICIALIZACIÓN ===
+        print("[MainWindow] Llamando init_ui()...")
         self.init_ui()
+        print("[MainWindow] init_ui() OK")
+        
+        print("[MainWindow] Llamando _init_disk_manager()...")
         self._init_disk_manager()
+        print("[MainWindow] _init_disk_manager() OK")
+        
+        print("[MainWindow] Llamando setup_connections()...")
         self.setup_connections()
+        print("[MainWindow] setup_connections() OK")
+        
+        print("[MainWindow] Llamando setup_shortcuts()...")
         self.setup_shortcuts()
+        print("[MainWindow] setup_shortcuts() OK")
+        
+        print("[MainWindow] Llamando setup_state_observers()...")
         self.setup_state_observers()  # ✅ NUEVO: Observadores del estado
+        print("[MainWindow] setup_state_observers() OK")
+        
+        print("[MainWindow] Llamando apply_saved_interface_settings()...")
         self.apply_saved_interface_settings()
-        self.load_column_settings()
+        print("[MainWindow] apply_saved_interface_settings() OK")
+        
+        print("[MainWindow] __init__ completado correctamente")
     
     def _init_disk_manager(self):
         """Inicializa DiskManager usando el estado centralizado"""
         try:
+            # Verificar que app_state esté disponible
+            if not hasattr(app_state, 'get_disk_manager'):
+                self.log_message("⚠️ app_state no tiene get_disk_manager, inicialización pospuesta")
+                self.disk_manager = None
+                return
+            
             # Obtener DiskManager del estado centralizado
-            self.disk_manager = app_state.get_disk_manager()
+            try:
+                self.disk_manager = app_state.get_disk_manager()
+            except Exception as e:
+                self.log_message(f"⚠️ Error llamando a get_disk_manager: {e}")
+                self.disk_manager = None
+                return
             
             if self.disk_manager:
                 # Actualizar DiskViewer con la instancia de DiskManager
                 if hasattr(self, 'disk_viewer') and self.disk_viewer:
                     self.disk_viewer.disk_manager = self.disk_manager
                     # Hacer el primer refresh después de asignar disk_manager
-                    self.disk_viewer.refresh_disks()
-                    self.log_message("✅ DiskViewer actualizado con DiskManager")
+                    try:
+                        self.disk_viewer.refresh_disks()
+                        self.log_message("✅ DiskViewer actualizado con DiskManager")
+                    except Exception as e:
+                        self.log_message(f"⚠️ Error refrescando discos: {e}")
             else:
                 self.log_message("⚠️ No se pudo inicializar DiskManager")
                 
         except Exception as e:
             self.log_message(f"❌ Error al inicializar DiskManager: {e}")
+            import traceback
+            self.log_message(traceback.format_exc())
             self.disk_manager = None
     
     def init_ui(self):
@@ -263,7 +333,8 @@ class FileOrganizerGUI(QMainWindow):
         separator1.setFrameShape(QFrame.Shape.VLine)
         separator1.setFrameShadow(QFrame.Shadow.Sunken)
         separator1.setMaximumHeight(30)
-        separator1.setStyleSheet("QFrame { color: var(--border-color, #bdc3c7); }")
+        # Estilos se aplicarán dinámicamente con el tema
+        separator1.setObjectName("separator1")
         selection_layout.addWidget(separator1)
         
         # GRUPO 2: Checkbox de carpetas - SIMPLE Y BÁSICO
@@ -285,7 +356,8 @@ class FileOrganizerGUI(QMainWindow):
         separator2.setFrameShape(QFrame.Shape.VLine)
         separator2.setFrameShadow(QFrame.Shadow.Sunken)
         separator2.setMaximumHeight(30)
-        separator2.setStyleSheet("QFrame { color: var(--border-color, #bdc3c7); }")
+        # Estilos se aplicarán dinámicamente con el tema
+        separator2.setObjectName("separator2")
         selection_layout.addWidget(separator2)
         
         # GRUPO 3: Campo de similitud - CAMPO MÁS GRANDE Y LEGIBLE
@@ -351,15 +423,23 @@ class FileOrganizerGUI(QMainWindow):
         # Los estilos se aplican automáticamente via themes.py
         header = self.movements_table.horizontalHeader()
         
-        # ✅ NUEVO: Permitir redimensionamiento manual de TODAS las columnas
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)  # Checkbox
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)  # Elemento
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)  # Destino
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)  # Porcentaje
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)  # Archivos
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive)  # Tamaño
+        # ✅ PASO 1: PRIMERO establecer los anchos ANTES de configurar ResizeMode
+        self.movements_table.setColumnWidth(0, 50)     # ☑️ Checkbox
+        self.movements_table.setColumnWidth(1, 900)    # 📂 Elemento - 900px
+        self.movements_table.setColumnWidth(2, 200)    # 📁 Destino - 200px
+        self.movements_table.setColumnWidth(3, 200)    # 📊 % - 200px
+        self.movements_table.setColumnWidth(4, 200)    # 📄 Archivos - 200px
+        self.movements_table.setColumnWidth(5, 200)    # 💾 Tamaño - 200px
         
-        # ✅ NUEVO: Habilitar ordenamiento por columnas
+        # ✅ PASO 2: DESPUÉS configurar ResizeMode (Interactive permite que el usuario ajuste)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)  # Checkbox - ajustable
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)  # Elemento - ajustable
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)  # Destino - ajustable
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)  # Porcentaje - ajustable
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)  # Archivos - ajustable
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive)  # Tamaño - ajustable
+        
+        # ✅ Habilitar ordenamiento por columnas
         header.setSortIndicatorShown(True)
         header.setSectionsClickable(True)
         header.sectionClicked.connect(self.on_header_clicked)
@@ -372,24 +452,8 @@ class FileOrganizerGUI(QMainWindow):
                          "📄 Archivos: Número de archivos contenidos\n"
                          "💾 Tamaño: Tamaño total del elemento")
         
-        # ✅ NUEVO: Establecer anchos por defecto
-        self.default_column_widths = {
-            0: 50,   # Checkbox
-            1: 300,  # Elemento
-            2: 200,  # Destino
-            3: 80,   # Porcentaje
-            4: 80,   # Archivos
-            5: 100   # Tamaño
-        }
-        
-        # Aplicar anchos por defecto
-        for column, width in self.default_column_widths.items():
-            self.movements_table.setColumnWidth(column, width)
-        
-        # ✅ NUEVO: Conectar señales para persistencia
-        header.sectionResized.connect(self.on_column_resized)
+        # Permitir que el usuario reordene columnas si lo desea
         header.setSectionsMovable(True)
-        header.sectionMoved.connect(self.on_column_moved)
         
         # Habilitar selección por filas
         self.movements_table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
@@ -403,17 +467,6 @@ class FileOrganizerGUI(QMainWindow):
         
         organize_layout.addWidget(self.movements_table)
         
-        # ✅ NUEVO: Botones de control de tabla
-        table_controls_layout = QHBoxLayout()
-        
-        self.reset_columns_btn = QPushButton("📏 Resetear Columnas")
-        self.reset_columns_btn.setToolTip("Restaura el ancho y orden de las columnas a valores por defecto")
-        self.reset_columns_btn.clicked.connect(self.reset_column_settings)
-        table_controls_layout.addWidget(self.reset_columns_btn)
-        
-        table_controls_layout.addStretch()  # Empujar hacia la derecha
-        
-        organize_layout.addLayout(table_controls_layout)
         
         # Botón principal de organizar (prominente) - DISEÑO PROFESIONAL
         organize_btn_layout = QHBoxLayout()
@@ -454,48 +507,18 @@ class FileOrganizerGUI(QMainWindow):
         # Tarjeta de resumen de tamaño
         size_card = QFrame()
         size_card.setObjectName("stats_card")
-        size_card.setStyleSheet("""
-            QFrame {
-                background-color: var(--card-bg);
-                border: 1px solid var(--border-color);
-                border-radius: 8px;
-                padding: 12px;
-                margin: 4px;
-            }
-            QFrame:hover {
-                border: 2px solid var(--accent-color);
-            }
-        """)
+        # Estilos se aplicarán dinámicamente con el tema
         size_card_layout = QVBoxLayout(size_card)
         
         size_header = QLabel("💾 RESUMEN DE TAMAÑO")
         size_header.setObjectName("stats_card_header")
-        size_header.setStyleSheet("""
-            QLabel {
-                color: var(--accent-color);
-                font-weight: bold;
-                font-size: 12px;
-                text-align: center;
-                margin-bottom: 8px;
-            }
-        """)
+        # Estilos se aplicarán dinámicamente con el tema
         size_card_layout.addWidget(size_header)
         
         self.total_size_label = QLabel("💾 Tamaño total: 0 B")
         self.total_size_label.setToolTip("💾 Tamaño total de todos los archivos y carpetas seleccionados para organizar")
         self.total_size_label.setObjectName("total_size_label")
-        self.total_size_label.setStyleSheet("""
-            QLabel {
-                color: var(--text-color);
-                font-weight: bold;
-                font-size: 14px;
-                text-align: center;
-                padding: 8px;
-                background-color: var(--bg-color);
-                border-radius: 4px;
-                border: 1px solid var(--border-color);
-            }
-        """)
+        # Estilos se aplicarán dinámicamente con el tema
         size_card_layout.addWidget(self.total_size_label)
         
         summary_layout.addWidget(size_card)
@@ -503,48 +526,18 @@ class FileOrganizerGUI(QMainWindow):
         # Tarjeta de resumen de archivos
         files_card = QFrame()
         files_card.setObjectName("stats_card")
-        files_card.setStyleSheet("""
-            QFrame {
-                background-color: var(--card-bg);
-                border: 1px solid var(--border-color);
-                border-radius: 8px;
-                padding: 12px;
-                margin: 4px;
-            }
-            QFrame:hover {
-                border: 2px solid var(--accent-color);
-            }
-        """)
+        # Estilos se aplicarán dinámicamente con el tema
         files_card_layout = QVBoxLayout(files_card)
         
         files_header = QLabel("📄 RESUMEN DE ARCHIVOS")
         files_header.setObjectName("stats_card_header")
-        files_header.setStyleSheet("""
-            QLabel {
-                color: var(--accent-color);
-                font-weight: bold;
-                font-size: 12px;
-                text-align: center;
-                margin-bottom: 8px;
-            }
-        """)
+        # Estilos se aplicarán dinámicamente con el tema
         files_card_layout.addWidget(files_header)
         
         self.total_files_label = QLabel("📄 Total archivos: 0")
         self.total_files_label.setToolTip("📄 Número total de archivos que serán organizados")
         self.total_files_label.setObjectName("total_files_label")
-        self.total_files_label.setStyleSheet("""
-            QLabel {
-                color: var(--text-color);
-                font-weight: bold;
-                font-size: 14px;
-                text-align: center;
-                padding: 8px;
-                background-color: var(--bg-color);
-                border-radius: 4px;
-                border: 1px solid var(--border-color);
-            }
-        """)
+        # Estilos se aplicarán dinámicamente con el tema
         files_card_layout.addWidget(self.total_files_label)
         
         summary_layout.addWidget(files_card)
@@ -557,48 +550,19 @@ class FileOrganizerGUI(QMainWindow):
         # Tarjeta de distribución por categoría
         category_card = QFrame()
         category_card.setObjectName("stats_card")
-        category_card.setStyleSheet("""
-            QFrame {
-                background-color: var(--card-bg);
-                border: 1px solid var(--border-color);
-                border-radius: 8px;
-                padding: 12px;
-                margin: 4px;
-            }
-            QFrame:hover {
-                border: 2px solid var(--accent-color);
-            }
-        """)
+        # Estilos se aplicarán dinámicamente con el tema
         category_card_layout = QVBoxLayout(category_card)
         
         category_header = QLabel("📁 DISTRIBUCIÓN POR CATEGORÍA")
         category_header.setObjectName("stats_card_header")
-        category_header.setStyleSheet("""
-            QLabel {
-                color: var(--accent-color);
-                font-weight: bold;
-                font-size: 12px;
-                text-align: center;
-                margin-bottom: 8px;
-            }
-        """)
+        # Estilos se aplicarán dinámicamente con el tema
         category_card_layout.addWidget(category_header)
         
         self.category_stats_label = QLabel("📁 Por categoría: Sin datos")
         self.category_stats_label.setToolTip("📁 Distribución de archivos por categorías específicas detectadas")
         self.category_stats_label.setObjectName("category_stats_label")
         self.category_stats_label.setWordWrap(True)
-        self.category_stats_label.setStyleSheet("""
-            QLabel {
-                color: var(--text-color);
-                font-size: 12px;
-                line-height: 1.4;
-                padding: 8px;
-                background-color: var(--bg-color);
-                border-radius: 4px;
-                border: 1px solid var(--border-color);
-            }
-        """)
+        # Estilos se aplicarán dinámicamente con el tema
         category_card_layout.addWidget(self.category_stats_label)
         
         category_stats_layout.addWidget(category_card)
@@ -606,48 +570,19 @@ class FileOrganizerGUI(QMainWindow):
         # Tarjeta de categorías disponibles
         available_card = QFrame()
         available_card.setObjectName("stats_card")
-        available_card.setStyleSheet("""
-            QFrame {
-                background-color: var(--card-bg);
-                border: 1px solid var(--border-color);
-                border-radius: 8px;
-                padding: 12px;
-                margin: 4px;
-            }
-            QFrame:hover {
-                border: 2px solid var(--accent-color);
-            }
-        """)
+        # Estilos se aplicarán dinámicamente con el tema
         available_card_layout = QVBoxLayout(available_card)
         
         available_header = QLabel("⚙️ CATEGORÍAS DISPONIBLES")
         available_header.setObjectName("stats_card_header")
-        available_header.setStyleSheet("""
-            QLabel {
-                color: var(--accent-color);
-                font-weight: bold;
-                font-size: 12px;
-                text-align: center;
-                margin-bottom: 8px;
-            }
-        """)
+        # Estilos se aplicarán dinámicamente con el tema
         available_card_layout.addWidget(available_header)
         
         self.available_categories_label = QLabel("⚙️ Categorías disponibles: Cargando...")
         self.available_categories_label.setToolTip("⚙️ Lista de todas las categorías configuradas en el sistema")
         self.available_categories_label.setObjectName("available_categories_label")
         self.available_categories_label.setWordWrap(True)
-        self.available_categories_label.setStyleSheet("""
-            QLabel {
-                color: var(--text-color);
-                font-size: 12px;
-                line-height: 1.4;
-                padding: 8px;
-                background-color: var(--bg-color);
-                border-radius: 4px;
-                border: 1px solid var(--border-color);
-            }
-        """)
+        # Estilos se aplicarán dinámicamente con el tema
         available_card_layout.addWidget(self.available_categories_label)
         
         category_stats_layout.addWidget(available_card)
@@ -754,10 +689,26 @@ class FileOrganizerGUI(QMainWindow):
     def setup_state_observers(self):
         """✅ NUEVO: Configura observadores del estado centralizado"""
         try:
+            # Verificar que app_state esté disponible
+            if not hasattr(app_state, 'state_changed'):
+                self.log_message("⚠️ app_state no está completamente inicializado, saltando observadores")
+                return
+            
             # Conectar señales del estado centralizado
-            app_state.state_changed.connect(self.on_state_changed)
-            app_state.theme_changed.connect(self.on_theme_changed)
-            app_state.disk_selected.connect(self.on_disk_selected)
+            try:
+                app_state.state_changed.connect(self.on_state_changed)
+            except Exception as e:
+                self.log_message(f"⚠️ Error conectando state_changed: {e}")
+            
+            try:
+                app_state.theme_changed.connect(self.on_theme_changed)
+            except Exception as e:
+                self.log_message(f"⚠️ Error conectando theme_changed: {e}")
+            
+            try:
+                app_state.disk_selected.connect(self.on_disk_selected)
+            except Exception as e:
+                self.log_message(f"⚠️ Error conectando disk_selected: {e}")
             
             # Conectar señales del gestor de workers (temporalmente comentado)
             # worker_manager.worker_started.connect(self.on_worker_started)
@@ -1002,19 +953,20 @@ class FileOrganizerGUI(QMainWindow):
                 self.similarity_spinbox.value()
             )
             
+            # Guardar referencia al worker para limpieza
+            if not hasattr(self, '_active_workers'):
+                self._active_workers = []
+            self._active_workers.append(analysis_worker)
+            
             # Conectar señales específicas del worker
             analysis_worker.progress_update.connect(self.log_message)
             analysis_worker.analysis_complete.connect(self.on_analysis_complete)
             analysis_worker.error_occurred.connect(self.on_analysis_error)
             
-            # Iniciar worker usando el gestor centralizado (temporalmente comentado)
-            # if worker_manager.start_worker(worker_id, analysis_worker, "AnalysisWorker"):
-            #     self.log_message(f"✅ Worker de análisis iniciado: {worker_id}")
-            # else:
-            #     self.log_message("❌ No se pudo iniciar el worker de análisis")
-            #     QMessageBox.warning(self, "Error", "No se pudo iniciar el análisis. Verifica que no haya otro análisis en curso.")
+            # Conectar señal de finalización para limpiar el worker
+            analysis_worker.finished.connect(lambda: self._cleanup_worker(analysis_worker))
             
-            # Iniciar worker directamente (modo temporal)
+            # Iniciar worker
             analysis_worker.start()
             self.log_message(f"✅ Worker de análisis iniciado: {worker_id}")
             
@@ -1124,6 +1076,15 @@ class FileOrganizerGUI(QMainWindow):
         
         # Actualizar modelo con nuevos datos (virtualización automática)
         self.movements_model.update_data(model_data)
+        
+        # ✅ CRÍTICO: Re-aplicar anchos de columna después de actualizar el modelo
+        # El resetModel() puede cambiar los anchos, así que los re-aplicamos
+        self.movements_table.setColumnWidth(0, 50)     # ☑️ Checkbox
+        self.movements_table.setColumnWidth(1, 900)    # 📂 Elemento - 900px
+        self.movements_table.setColumnWidth(2, 200)    # 📁 Destino - 200px
+        self.movements_table.setColumnWidth(3, 200)    # 📊 % - 200px
+        self.movements_table.setColumnWidth(4, 200)    # 📄 Archivos - 200px
+        self.movements_table.setColumnWidth(5, 200)    # 💾 Tamaño - 200px
         
         # Log de performance
         self.log_message(f"✅ Tabla virtualizada poblada con {len(model_data)} elementos (performance óptima)")
@@ -1390,18 +1351,19 @@ class FileOrganizerGUI(QMainWindow):
         worker_id = f"organize_{int(time.time())}"
         organize_worker = OrganizeWorker(folder_path, selected_folder_movements, selected_file_movements)
         
+        # Guardar referencia al worker para limpieza
+        if not hasattr(self, '_active_workers'):
+            self._active_workers = []
+        self._active_workers.append(organize_worker)
+        
         # Conectar señales específicas del worker
         organize_worker.progress_update.connect(self.log_message)
         organize_worker.organize_complete.connect(self.on_organize_complete)
         
-        # Iniciar worker usando el gestor centralizado (temporalmente comentado)
-        # if worker_manager.start_worker(worker_id, organize_worker, "OrganizeWorker"):
-        #     self.log_message(f"✅ Worker de organización iniciado: {worker_id}")
-        # else:
-        #     self.log_message("❌ No se pudo iniciar el worker de organización")
-        #     QMessageBox.warning(self, "Error", "No se pudo iniciar la organización. Verifica que no haya otra operación en curso.")
+        # Conectar señal de finalización para limpiar el worker
+        organize_worker.finished.connect(lambda: self._cleanup_worker(organize_worker))
         
-        # Iniciar worker directamente (modo temporal)
+        # Iniciar worker
         organize_worker.start()
         self.log_message(f"✅ Worker de organización iniciado: {worker_id}")
     
@@ -1459,72 +1421,153 @@ class FileOrganizerGUI(QMainWindow):
             self.log_message(f"⚠️ Error aplicando configuración guardada: {str(e)}")
     
     def apply_theme_and_font_together(self, theme_name: str, font_size: int):
-        """Aplica tema y fuente JUNTOS para evitar conflictos"""
+        """Aplica tema y fuente JUNTOS de forma simple y segura"""
         try:
-            from PyQt6.QtWidgets import QApplication
+            from PyQt6.QtWidgets import QApplication, QDialog, QPushButton
             app = QApplication.instance()
+            if not app:
+                return
             
             # Obtener paleta y CSS del tema
             palette = ThemeManager.apply_theme_to_palette(theme_name)
             css_styles = ThemeManager.get_css_styles(theme_name, font_size)
             
+            # PASO 0: LIMPIAR estilos anteriores de la aplicación completa
+            app.setStyleSheet("")
+            self.setStyleSheet("")
+            for widget in self.findChildren(QWidget):
+                try:
+                    widget.setStyleSheet("")
+                except:
+                    pass
+            
             # PASO 1: Aplicar a toda la aplicación
-            if app:
-                app.setPalette(palette)
-                app.setStyleSheet(css_styles)
-                app.processEvents()
+            app.setPalette(palette)
+            app.setStyleSheet(css_styles)
             
             # PASO 2: Aplicar a la ventana principal
             self.setPalette(palette)
             self.setStyleSheet(css_styles)
             
-            # PASO 3: Aplicar a todos los widgets hijos
-            self.apply_theme_to_all_widgets_simple(palette, css_styles)
+            # PASO 3: Aplicar a todos los widgets hijos (optimizado - sin duplicados)
+            processed_widgets = set()  # Para evitar procesar el mismo widget dos veces
             
-            # PASO 4: Refrescar DiskViewer: aplicar estilos y regenerar análisis
+            def apply_to_widget_safe(widget):
+                """Aplica tema a un widget de forma segura"""
+                if widget in processed_widgets:
+                    return
+                processed_widgets.add(widget)
+                
+                try:
+                    widget.setPalette(palette)
+                    # Solo aplicar CSS si no tiene estilos personalizados con !important
+                    current_style = widget.styleSheet() or ""
+                    if not current_style or '!important' not in current_style:
+                        widget.setStyleSheet(css_styles)
+                    widget.update()
+                except:
+                    pass
+            
+            # Aplicar a todos los widgets hijos de la ventana principal (sin recursión duplicada)
+            for widget in self.findChildren(QWidget):
+                apply_to_widget_safe(widget)
+            
+            # PASO 4: Aplicar estilos a tarjetas y elementos especiales
+            self.apply_stats_cards_styles(theme_name)
+            
+            # PASO 5: Actualizar todos los diálogos abiertos (especialmente ConfigDialog)
+            for widget in app.allWidgets():
+                if isinstance(widget, QDialog) and widget.isVisible():
+                    try:
+                        if hasattr(widget, 'apply_current_theme_to_self'):
+                            # Aplicar inmediatamente a todos los diálogos
+                            widget.apply_current_theme_to_self()
+                        else:
+                            # Fallback: aplicar tema básico
+                            widget.setPalette(palette)
+                            widget.setStyleSheet(css_styles)
+                            for child in widget.findChildren(QWidget):
+                                try:
+                                    child.setPalette(palette)
+                                    child.setStyleSheet(css_styles)
+                                except:
+                                    pass
+                            widget.update()
+                            widget.repaint()
+                    except:
+                        pass
+            
+            # PASO 6: Refrescar DiskViewer (esto aplicará sus propios estilos)
             if hasattr(self, 'disk_viewer') and self.disk_viewer:
                 try:
-                    # Aplicar estilos del tema al DiskViewer
+                    # Limpiar estilos del DiskViewer primero
+                    self.disk_viewer.setStyleSheet("")
+                    for child in self.disk_viewer.findChildren(QWidget):
+                        try:
+                            child.setStyleSheet("")
+                        except:
+                            pass
+                    # Aplicar nuevos estilos
                     self.disk_viewer.apply_theme_styles(theme_name)
-                except Exception:
+                    
+                    # Refrescar la tabla de discos para aplicar nuevos colores
+                    QTimer.singleShot(150, lambda: self._refresh_disk_viewer_after_theme(theme_name))
+                except:
                     pass
-                selected_disk = self.disk_viewer.get_selected_disk_path()
-                if selected_disk:
-                    self.log_message(f"🔄 Refrescando DiskViewer para {selected_disk} tras cambio de tema.")
-                    # Usar un timer para asegurar que el ciclo de eventos procese el cambio de estilo primero
-                    QTimer.singleShot(150, lambda: self.disk_viewer.update_selected_disk_info(selected_disk))
-
-            # PASO 5: Forzar actualización
+            
+            # PASO 7: Refrescar todas las tablas y widgets que puedan tener datos visuales
+            QTimer.singleShot(200, lambda: self._refresh_all_tables_after_theme())
+            
+            # PASO 8: Re-aplicar anchos de columna de la tabla principal después del tema
+            QTimer.singleShot(250, lambda: self._reapply_table_column_widths())
+            
+            # Actualización final - UNA SOLA VEZ
             self.update()
             self.repaint()
-            
-            if app:
-                app.processEvents()
+            app.processEvents()
                 
         except Exception as e:
             self.log_message(f"⚠️ Error aplicando tema y fuente: {str(e)}")
+            import traceback
+            self.log_message(f"Traceback: {traceback.format_exc()}")
     
-    def apply_theme_to_all_widgets_simple(self, palette, css_styles):
+    def _cleanup_worker(self, worker):
+        """Limpia un worker después de que termine"""
+        try:
+            if worker in self._active_workers:
+                self._active_workers.remove(worker)
+            # Esperar a que el thread termine antes de eliminarlo
+            if worker.isRunning():
+                worker.wait(1000)  # Esperar máximo 1 segundo
+            worker.deleteLater()
+        except Exception:
+            pass
+    
+    def apply_theme_to_all_widgets_simple(self, palette, css_styles, update_visual: bool = True):
         """Aplica tema a todos los widgets de forma simple y eficiente"""
         try:
             # Aplicar a todos los widgets hijos
             for widget in self.findChildren(QWidget):
                 try:
                     widget.setPalette(palette)
-                    widget.setStyleSheet(css_styles)
+                    # Solo aplicar CSS si no tiene estilos personalizados con !important
+                    current_style = widget.styleSheet() or ""
+                    if not current_style or '!important' not in current_style:
+                        widget.setStyleSheet(css_styles)
                     
                     # Si el widget tiene apply_theme_styles (como DiskViewer), llamarlo también
-                    # DiskViewer se encargará de refrescar su propio contenido si es necesario
                     if hasattr(widget, 'apply_theme_styles') and widget is not self.disk_viewer:
                         try:
                             theme_name = self.app_config.get_theme()
                             widget.apply_theme_styles(theme_name)
                         except:
                             pass
+                    
+                    # Solo actualizar visualmente si se solicita
+                    if update_visual:
+                        widget.update()
                 except:
                     pass
-            
-            # Checkbox usa estilos básicos del tema
                     
         except Exception as e:
             pass
@@ -1532,20 +1575,29 @@ class FileOrganizerGUI(QMainWindow):
     def apply_theme_to_dialog_simple(self, dialog):
         """Aplica el tema actual a un diálogo usando el sistema mejorado"""
         try:
-            # Obtener tema y fuente actuales
-            theme = self.app_config.get_theme()
-            font_size = self.app_config.get_font_size()
-            
-            # Usar el nuevo sistema mejorado de aplicación de temas
-            from src.utils.theme_applier import theme_applier
-            success = theme_applier.apply_theme_to_dialog(dialog, theme, font_size)
-            
-            if success:
-                self.log_message(f"✅ Tema aplicado al diálogo: {theme}")
+            # Si el diálogo tiene método para aplicar tema, usarlo (es el método más completo)
+            if hasattr(dialog, 'apply_current_theme_to_self'):
+                dialog.apply_current_theme_to_self()
             else:
-                self.log_message(f"⚠️ Error aplicando tema al diálogo: {theme}")
-                # Fallback al método anterior
-                self._apply_theme_to_dialog_fallback(dialog, theme, font_size)
+                # Fallback: aplicar tema básico
+                theme = self.app_config.get_theme()
+                font_size = self.app_config.get_font_size()
+                palette = ThemeManager.apply_theme_to_palette(theme)
+                css_styles = ThemeManager.get_css_styles(theme, font_size)
+                
+                dialog.setPalette(palette)
+                dialog.setStyleSheet(css_styles)
+                
+                # Aplicar a todos los widgets hijos del diálogo
+                for widget in dialog.findChildren(QWidget):
+                    try:
+                        widget.setPalette(palette)
+                        widget.setStyleSheet(css_styles)
+                    except:
+                        pass
+                
+                dialog.update()
+                dialog.repaint()
             
         except Exception as e:
             self.log_message(f"⚠️ Error aplicando tema al diálogo: {str(e)}")
@@ -1608,13 +1660,116 @@ class FileOrganizerGUI(QMainWindow):
             # Aplicar tema y fuente JUNTOS
             self.apply_theme_and_font_together(theme, font_size)
             
-            # Actualizar diálogos abiertos si existen
+            # Actualizar diálogos abiertos si existen (especialmente ConfigDialog)
             self.refresh_open_dialogs()
+            
+            # Asegurar que el ConfigDialog se actualice inmediatamente si está abierto
+            from PyQt6.QtWidgets import QApplication
+            app = QApplication.instance()
+            if app:
+                for widget in app.allWidgets():
+                    if isinstance(widget, ConfigDialog) and widget.isVisible():
+                        # Actualizar INMEDIATAMENTE sin delay
+                        widget.apply_current_theme_to_self()
             
             self.log_message(f"✅ Configuración de interfaz aplicada: {font_size}px, {theme}")
             
         except Exception as e:
             self.log_message(f"❌ Error aplicando cambios de interfaz: {str(e)}")
+    
+    def _refresh_disk_viewer_after_theme(self, theme_name: str):
+        """Refresca el DiskViewer después de aplicar el tema"""
+        try:
+            if hasattr(self, 'disk_viewer') and self.disk_viewer:
+                # Refrescar la tabla de discos para aplicar nuevos colores
+                self.disk_viewer.refresh_disks()
+                
+                # Actualizar información del disco seleccionado si hay uno
+                selected_disk = self.disk_viewer.get_selected_disk_path()
+                if selected_disk:
+                    self.disk_viewer.update_selected_disk_info(selected_disk)
+                
+                # Forzar actualización visual
+                self.disk_viewer.update()
+                self.disk_viewer.repaint()
+        except Exception as e:
+            self.log_message(f"⚠️ Error refrescando DiskViewer después del tema: {str(e)}")
+    
+    def _refresh_all_tables_after_theme(self):
+        """Refresca todas las tablas y widgets después de aplicar el tema"""
+        try:
+            from PyQt6.QtWidgets import QTableWidget, QTableView
+            
+            # Refrescar tabla de movimientos si existe
+            if hasattr(self, 'movements_table') and self.movements_table:
+                self.movements_table.update()
+                self.movements_table.repaint()
+            
+            # Refrescar tabla de duplicados si existe
+            if hasattr(self, 'duplicates_dashboard') and self.duplicates_dashboard:
+                try:
+                    # El tema ya se aplicó en el paso 3, solo refrescar la tabla
+                    if hasattr(self.duplicates_dashboard, 'duplicates_table') and self.duplicates_dashboard.duplicates_table:
+                        self.duplicates_dashboard.duplicates_table.update()
+                        self.duplicates_dashboard.duplicates_table.repaint()
+                    # Aplicar estilos al botón de escaneo si existe
+                    if hasattr(self.duplicates_dashboard, 'apply_scan_button_style'):
+                        self.duplicates_dashboard.apply_scan_button_style()
+                except Exception as e:
+                    self.log_message(f"⚠️ Error refrescando DuplicatesDashboard: {str(e)}")
+            
+            # Refrescar todas las tablas encontradas
+            for widget in self.findChildren(QTableWidget):
+                try:
+                    widget.update()
+                    widget.repaint()
+                except:
+                    pass
+            for widget in self.findChildren(QTableView):
+                try:
+                    widget.update()
+                    widget.repaint()
+                except:
+                    pass
+            
+            # Forzar actualización de la ventana principal
+            self.update()
+            self.repaint()
+        except Exception as e:
+            self.log_message(f"⚠️ Error refrescando tablas después del tema: {str(e)}")
+    
+    def _reapply_table_column_widths(self):
+        """✅ Re-aplica los anchos de columna de TODAS las tablas después de cambiar el tema/fuente"""
+        try:
+            # 1. Tabla principal de movimientos
+            if hasattr(self, 'movements_table') and self.movements_table:
+                self.movements_table.setColumnWidth(0, 50)     # ☑️ Checkbox
+                self.movements_table.setColumnWidth(1, 900)    # 📂 Elemento - 900px
+                self.movements_table.setColumnWidth(2, 200)    # 📁 Destino - 200px
+                self.movements_table.setColumnWidth(3, 200)    # 📊 % - 200px
+                self.movements_table.setColumnWidth(4, 200)    # 📄 Archivos - 200px
+                self.movements_table.setColumnWidth(5, 200)    # 💾 Tamaño - 200px
+                self.log_message("📏 Anchos de tabla principal re-aplicados")
+            
+            # 2. Tabla de duplicados
+            if hasattr(self, 'duplicates_dashboard') and self.duplicates_dashboard:
+                if hasattr(self.duplicates_dashboard, 'apply_column_widths'):
+                    self.duplicates_dashboard.apply_column_widths()
+                    self.log_message("📏 Anchos de tabla de duplicados re-aplicados")
+            
+            # 3. Tabla de discos (en DiskViewer)
+            if hasattr(self, 'disk_viewer') and self.disk_viewer:
+                if hasattr(self.disk_viewer, 'disks_table'):
+                    # Anchos predefinidos de la tabla de discos
+                    self.disk_viewer.disks_table.setColumnWidth(0, 80)   # Unidad
+                    self.disk_viewer.disks_table.setColumnWidth(5, 80)   # % Uso
+                    self.disk_viewer.disks_table.setColumnWidth(6, 100)  # Sistema
+                    self.disk_viewer.disks_table.setColumnWidth(7, 130)  # Botón
+                    self.log_message("📏 Anchos de tabla de discos re-aplicados")
+            
+            self.log_message("✅ Todos los anchos de columna re-aplicados después del cambio")
+        except Exception as e:
+            self.log_message(f"⚠️ Error re-aplicando anchos de columna: {str(e)}")
     
     def refresh_open_dialogs(self):
         """Actualiza todos los diálogos abiertos con el tema actual"""
@@ -1631,39 +1786,75 @@ class FileOrganizerGUI(QMainWindow):
     
     # Función eliminada - ahora se aplica junto con el tema
     
-    def apply_theme(self, theme_name: str):
-        """Aplica un tema específico"""
+    def apply_stats_cards_styles(self, theme_name: str):
+        """Aplica estilos dinámicos a las tarjetas de estadísticas y separadores"""
         try:
-            # Obtener aplicación
-            from PyQt6.QtWidgets import QApplication
-            app = QApplication.instance()
+            colors = ThemeManager.get_theme_colors(theme_name)
             
+            # Aplicar estilos a separadores
+            for separator in self.findChildren(QFrame):
+                if separator.objectName() in ["separator1", "separator2"]:
+                    separator.setStyleSheet(f"QFrame {{ color: {colors['border']}; }}")
+            
+            # Aplicar estilos a tarjetas de estadísticas
+            card_style = f"""
+                QFrame {{
+                    background-color: {colors['surface']};
+                    border: 1px solid {colors['border']};
+                    border-radius: 8px;
+                    padding: 12px;
+                    margin: 4px;
+                }}
+                QFrame:hover {{
+                    border: 2px solid {colors['accent']};
+                }}
+            """
+            for card in self.findChildren(QFrame):
+                if card.objectName() == "stats_card":
+                    card.setStyleSheet(card_style)
+            
+            # Aplicar estilos a headers de tarjetas
+            header_style = f"""
+                QLabel {{
+                    color: {colors['accent']};
+                    font-weight: bold;
+                    font-size: 12px;
+                    text-align: center;
+                    margin-bottom: 8px;
+                }}
+            """
+            for header in self.findChildren(QLabel):
+                if header.objectName() == "stats_card_header":
+                    header.setStyleSheet(header_style)
+            
+            # Aplicar estilos a labels de valores
+            value_style = f"""
+                QLabel {{
+                    color: {colors['text_primary']};
+                    font-weight: bold;
+                    font-size: 14px;
+                    text-align: center;
+                    padding: 8px;
+                    background-color: {colors['surface']};
+                    border-radius: 4px;
+                    border: 1px solid {colors['border']};
+                }}
+            """
+            value_labels = ["total_size_label", "total_files_label", "category_stats_label", "available_categories_label"]
+            for label in self.findChildren(QLabel):
+                if label.objectName() in value_labels:
+                    label.setStyleSheet(value_style)
+        except Exception as e:
+            self.log_message(f"⚠️ Error aplicando estilos a tarjetas: {str(e)}")
+    
+    def apply_theme(self, theme_name: str):
+        """Aplica un tema específico (usa apply_theme_and_font_together internamente)"""
+        try:
             # Obtener el tamaño de fuente actual
             current_font_size = self.app_config.get_font_size()
             
-            # Aplicar paleta y CSS
-            palette = ThemeManager.apply_theme_to_palette(theme_name)
-            css_styles = ThemeManager.get_css_styles(theme_name, current_font_size)
-            
-            # Aplicar a toda la aplicación
-            if app:
-                app.setPalette(palette)
-                app.setStyleSheet(css_styles)
-                app.processEvents()
-            
-            # Aplicar a la ventana principal
-            self.setPalette(palette)
-            self.setStyleSheet(css_styles)
-            
-            # Aplicar a todos los widgets hijos
-            self.apply_theme_to_all_widgets_simple(palette, css_styles)
-            
-            # Forzar actualización
-            self.update()
-            self.repaint()
-            
-            if app:
-                app.processEvents()
+            # Usar el método unificado
+            self.apply_theme_and_font_together(theme_name, current_font_size)
                 
             self.log_message(f"✅ Tema aplicado: {theme_name}")
             
@@ -1906,117 +2097,37 @@ class FileOrganizerGUI(QMainWindow):
             
             self.log_message(f"📊 Ordenando por columna {logical_index} ({'descendente' if new_order == Qt.SortOrder.DescendingOrder else 'ascendente'})")
     
-    def on_column_resized(self, logical_index, old_size, new_size):
-        """Se ejecuta cuando el usuario redimensiona una columna"""
-        self.log_message(f"📏 Columna {logical_index} redimensionada: {old_size}px → {new_size}px")
-        self.save_column_settings()
-    
-    def on_column_moved(self, logical_index, old_visual_index, new_visual_index):
-        """Se ejecuta cuando el usuario reordena columnas"""
-        self.log_message(f"🔄 Columna movida desde posición {old_visual_index} → {new_visual_index}")
-        self.save_column_settings()
-    
-    def save_column_settings(self):
-        """Guarda el estado actual de las columnas"""
-        try:
-            header = self.movements_table.horizontalHeader()
-            
-            # Guardar anchos de columnas
-            column_widths = {}
-            for i in range(self.movements_table.model().columnCount()):
-                column_widths[str(i)] = header.sectionSize(i)
-            
-            # Guardar orden visual de columnas
-            column_order = []
-            for i in range(self.movements_table.model().columnCount()):
-                column_order.append(header.visualIndex(i))
-            
-            # Guardar en configuración persistente
-            self.settings.setValue("column_widths", column_widths)
-            self.settings.setValue("column_order", column_order)
-            self.settings.sync()  # Forzar guardado inmediato
-            
-            self.log_message("💾 Estado de columnas guardado automáticamente")
-            
-        except Exception as e:
-            self.log_message(f"❌ Error guardando estado de columnas: {str(e)}")
-    
-    def load_column_settings(self):
-        """Carga el estado guardado de las columnas"""
-        try:
-            header = self.movements_table.horizontalHeader()
-            
-            # Cargar anchos de columnas
-            saved_widths = self.settings.value("column_widths", {})
-            if saved_widths:
-                for column_str, width in saved_widths.items():
-                    try:
-                        column_index = int(column_str)
-                        if 0 <= column_index < self.movements_table.model().columnCount():
-                            self.movements_table.setColumnWidth(column_index, int(width))
-                    except (ValueError, TypeError):
-                        continue
-            
-            # Cargar orden de columnas
-            saved_order = self.settings.value("column_order", [])
-            if saved_order and len(saved_order) == self.movements_table.model().columnCount():
-                try:
-                    for logical_index, visual_index in enumerate(saved_order):
-                        header.moveSection(header.visualIndex(logical_index), int(visual_index))
-                except (ValueError, TypeError):
-                    pass
-            
-            if saved_widths or saved_order:
-                self.log_message("📋 Estado de columnas restaurado desde configuración anterior")
-            else:
-                self.log_message("📋 Usando configuración de columnas por defecto")
-                
-        except Exception as e:
-            self.log_message(f"⚠️ Error cargando estado de columnas: {str(e)} - Usando valores por defecto")
-    
-    def reset_column_settings(self):
-        """Restaura las columnas a su configuración por defecto"""
-        try:
-            # Aplicar anchos por defecto
-            for column, width in self.default_column_widths.items():
-                self.movements_table.setColumnWidth(column, width)
-            
-            # Restaurar orden original
-            header = self.movements_table.horizontalHeader()
-            for i in range(self.movements_table.model().columnCount()):
-                header.moveSection(header.visualIndex(i), i)
-            
-            # Limpiar configuración guardada
-            self.settings.remove("column_widths")
-            self.settings.remove("column_order")
-            self.settings.sync()
-            
-            self.log_message("🔄 Columnas restauradas a configuración por defecto")
-            
-        except Exception as e:
-            self.log_message(f"❌ Error restaurando columnas: {str(e)}")
     
     def closeEvent(self, event):
         """Maneja el cierre de la ventana con limpieza completa"""
         try:
             self.log_message("🔄 Cerrando aplicación...")
             
-            # Cancelar todos los workers activos (temporalmente comentado)
-            # worker_manager.cancel_all_workers()
+            # Limpiar todos los workers activos
+            if hasattr(self, '_active_workers'):
+                for worker in self._active_workers[:]:  # Copia de la lista
+                    try:
+                        if worker.isRunning():
+                            worker.quit()
+                            worker.wait(2000)  # Esperar máximo 2 segundos
+                        worker.deleteLater()
+                    except:
+                        pass
+                self._active_workers.clear()
             
-            # Limpiar memoria (temporalmente comentado)
-            # memory_manager.cleanup()
-            
-            # Guardar configuración de columnas
-            self.save_column_settings()
-            
-            # Limpiar estado centralizado
-            app_state.cleanup()
+            # Limpiar estado centralizado (si está disponible)
+            try:
+                if hasattr(app_state, 'cleanup'):
+                    app_state.cleanup()
+            except Exception as cleanup_error:
+                self.log_message(f"⚠️ Error durante cleanup de app_state: {cleanup_error}")
             
             self.log_message("✅ Aplicación cerrada correctamente")
             
         except Exception as e:
             self.log_message(f"❌ Error durante el cierre: {e}")
+            import traceback
+            self.log_message(traceback.format_exc())
         
         # Aceptar el evento de cierre
         event.accept()
