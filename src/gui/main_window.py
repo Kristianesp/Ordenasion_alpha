@@ -38,12 +38,45 @@ class FileOrganizerGUI(QMainWindow):
     """Ventana principal del organizador de archivos"""
     
     def __init__(self):
-        super().__init__()
+        try:
+            print("[MainWindow] Iniciando __init__...")
+            print("[MainWindow] Llamando super().__init__()...")
+            super().__init__()
+            print("[MainWindow] super().__init__() OK")
+        except Exception as e:
+            print(f"[MainWindow] ERROR en super().__init__(): {e}")
+            import traceback
+            traceback.print_exc()
+            raise
         
         # === ESTADO CENTRALIZADO ===
-        # Usar componentes del estado centralizado
-        self.category_manager = app_state.category_manager
-        self.app_config = app_state.app_config
+        # Usar componentes del estado centralizado con manejo de errores
+        print("[MainWindow] Obteniendo category_manager...")
+        try:
+            self.category_manager = app_state.category_manager
+            if self.category_manager is None:
+                print("[MainWindow] ⚠️ category_manager es None, creando uno nuevo...")
+                from src.core.category_manager import CategoryManager
+                self.category_manager = CategoryManager()
+            print("[MainWindow] category_manager OK")
+        except Exception as e:
+            print(f"[MainWindow] ⚠️ ERROR obteniendo category_manager: {e}")
+            from src.core.category_manager import CategoryManager
+            self.category_manager = CategoryManager()
+        
+        print("[MainWindow] Obteniendo app_config...")
+        try:
+            self.app_config = app_state.app_config
+            if self.app_config is None:
+                print("[MainWindow] ⚠️ app_config es None, creando uno nuevo...")
+                from src.utils.app_config import AppConfig
+                self.app_config = AppConfig()
+            print("[MainWindow] app_config OK")
+        except Exception as e:
+            print(f"[MainWindow] ⚠️ ERROR obteniendo app_config: {e}")
+            from src.utils.app_config import AppConfig
+            self.app_config = AppConfig()
+        
         self.disk_manager = None  # Se obtendrá de app_state cuando se necesite
         
         # === DATOS LOCALES ===
@@ -53,34 +86,71 @@ class FileOrganizerGUI(QMainWindow):
         self._active_workers = []  # Lista de workers activos para limpieza
         
         # === CONFIGURACIÓN PERSISTENTE ===
+        print("[MainWindow] Creando QSettings...")
         self.settings = QSettings("FileOrganizer", "MainWindow")
+        print("[MainWindow] QSettings OK")
         
         # === INICIALIZACIÓN ===
+        print("[MainWindow] Llamando init_ui()...")
         self.init_ui()
+        print("[MainWindow] init_ui() OK")
+        
+        print("[MainWindow] Llamando _init_disk_manager()...")
         self._init_disk_manager()
+        print("[MainWindow] _init_disk_manager() OK")
+        
+        print("[MainWindow] Llamando setup_connections()...")
         self.setup_connections()
+        print("[MainWindow] setup_connections() OK")
+        
+        print("[MainWindow] Llamando setup_shortcuts()...")
         self.setup_shortcuts()
+        print("[MainWindow] setup_shortcuts() OK")
+        
+        print("[MainWindow] Llamando setup_state_observers()...")
         self.setup_state_observers()  # ✅ NUEVO: Observadores del estado
+        print("[MainWindow] setup_state_observers() OK")
+        
+        print("[MainWindow] Llamando apply_saved_interface_settings()...")
         self.apply_saved_interface_settings()
+        print("[MainWindow] apply_saved_interface_settings() OK")
+        
+        print("[MainWindow] __init__ completado correctamente")
     
     def _init_disk_manager(self):
         """Inicializa DiskManager usando el estado centralizado"""
         try:
+            # Verificar que app_state esté disponible
+            if not hasattr(app_state, 'get_disk_manager'):
+                self.log_message("⚠️ app_state no tiene get_disk_manager, inicialización pospuesta")
+                self.disk_manager = None
+                return
+            
             # Obtener DiskManager del estado centralizado
-            self.disk_manager = app_state.get_disk_manager()
+            try:
+                self.disk_manager = app_state.get_disk_manager()
+            except Exception as e:
+                self.log_message(f"⚠️ Error llamando a get_disk_manager: {e}")
+                self.disk_manager = None
+                return
             
             if self.disk_manager:
                 # Actualizar DiskViewer con la instancia de DiskManager
                 if hasattr(self, 'disk_viewer') and self.disk_viewer:
                     self.disk_viewer.disk_manager = self.disk_manager
                     # Hacer el primer refresh después de asignar disk_manager
-                    self.disk_viewer.refresh_disks()
-                    self.log_message("✅ DiskViewer actualizado con DiskManager")
+                    try:
+                        self.disk_viewer.refresh_disks()
+                        self.log_message("✅ DiskViewer actualizado con DiskManager")
+                    except Exception as e:
+                        self.log_message(f"⚠️ Error refrescando discos: {e}")
             else:
                 self.log_message("⚠️ No se pudo inicializar DiskManager")
                 
         except Exception as e:
             self.log_message(f"❌ Error al inicializar DiskManager: {e}")
+            import traceback
+            self.log_message(traceback.format_exc())
             self.disk_manager = None
     
     def init_ui(self):
@@ -619,10 +689,26 @@ class FileOrganizerGUI(QMainWindow):
     def setup_state_observers(self):
         """✅ NUEVO: Configura observadores del estado centralizado"""
         try:
+            # Verificar que app_state esté disponible
+            if not hasattr(app_state, 'state_changed'):
+                self.log_message("⚠️ app_state no está completamente inicializado, saltando observadores")
+                return
+            
             # Conectar señales del estado centralizado
-            app_state.state_changed.connect(self.on_state_changed)
-            app_state.theme_changed.connect(self.on_theme_changed)
-            app_state.disk_selected.connect(self.on_disk_selected)
+            try:
+                app_state.state_changed.connect(self.on_state_changed)
+            except Exception as e:
+                self.log_message(f"⚠️ Error conectando state_changed: {e}")
+            
+            try:
+                app_state.theme_changed.connect(self.on_theme_changed)
+            except Exception as e:
+                self.log_message(f"⚠️ Error conectando theme_changed: {e}")
+            
+            try:
+                app_state.disk_selected.connect(self.on_disk_selected)
+            except Exception as e:
+                self.log_message(f"⚠️ Error conectando disk_selected: {e}")
             
             # Conectar señales del gestor de workers (temporalmente comentado)
             # worker_manager.worker_started.connect(self.on_worker_started)
@@ -2029,13 +2115,19 @@ class FileOrganizerGUI(QMainWindow):
                         pass
                 self._active_workers.clear()
             
-            # Limpiar estado centralizado
-            app_state.cleanup()
+            # Limpiar estado centralizado (si está disponible)
+            try:
+                if hasattr(app_state, 'cleanup'):
+                    app_state.cleanup()
+            except Exception as cleanup_error:
+                self.log_message(f"⚠️ Error durante cleanup de app_state: {cleanup_error}")
             
             self.log_message("✅ Aplicación cerrada correctamente")
             
         except Exception as e:
             self.log_message(f"❌ Error durante el cierre: {e}")
+            import traceback
+            self.log_message(traceback.format_exc())
         
         # Aceptar el evento de cierre
         event.accept()

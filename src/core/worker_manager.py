@@ -11,8 +11,22 @@ from dataclasses import dataclass
 from enum import Enum
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
-from .application_state import app_state, EventType
-from .memory_manager import memory_manager
+# ⚠️ CRÍTICO: Importaciones lazy para evitar ejecución prematura en PyInstaller
+# NO importar directamente - usar funciones getter para acceso lazy
+def _get_app_state():
+    """Obtiene app_state de forma lazy (solo cuando se necesita)"""
+    from .application_state import app_state
+    return app_state
+
+def _get_event_type():
+    """Obtiene EventType de forma lazy"""
+    from .application_state import EventType
+    return EventType
+
+def _get_memory_manager():
+    """Obtiene memory_manager de forma lazy"""
+    from .memory_manager import memory_manager
+    return memory_manager
 
 
 class WorkerStatus(Enum):
@@ -88,11 +102,12 @@ class WorkerManager(QObject):
             }
         }
         
-        # Conectar con ApplicationState
-        app_state.add_observer(self._on_state_changed)
+        # Conectar con ApplicationState (de forma lazy)
+        self._state_observer_connected = False
     
     def _on_state_changed(self, event):
         """Maneja cambios del estado de la aplicación"""
+        EventType = _get_event_type()  # Lazy import
         if event.event_type == EventType.WORKER_STARTED:
             worker_id = event.data.get("worker_id")
             if worker_id:
@@ -102,6 +117,16 @@ class WorkerManager(QObject):
             worker_id = event.data.get("worker_id")
             if worker_id:
                 self._update_worker_status(worker_id, WorkerStatus.COMPLETED)
+    
+    def _ensure_state_observer(self):
+        """Asegura que el observador del estado esté conectado (lazy)"""
+        if not self._state_observer_connected:
+            try:
+                app_state = _get_app_state()  # Lazy import
+                app_state.add_observer(self._on_state_changed)
+                self._state_observer_connected = True
+            except Exception as e:
+                print(f"Error conectando observador de estado: {e}")
     
     def start_worker(self, worker_id: str, worker: QThread, worker_type: str) -> bool:
         """
@@ -115,6 +140,9 @@ class WorkerManager(QObject):
         Returns:
             bool: True si se inició correctamente, False si no se pudo iniciar
         """
+        # Asegurar conexión con estado
+        self._ensure_state_observer()
+        
         with self.lock:
             # Verificar si ya existe un worker con este ID
             if worker_id in self.active_workers:
@@ -146,10 +174,12 @@ class WorkerManager(QObject):
                 worker.start()
                 worker_info.status = WorkerStatus.RUNNING
                 
-                # Registrar en ApplicationState
+                # Registrar en ApplicationState (lazy import)
+                app_state = _get_app_state()
                 app_state.register_worker(worker_id, worker)
                 
-                # Registrar en MemoryManager
+                # Registrar en MemoryManager (lazy import)
+                memory_manager = _get_memory_manager()
                 memory_manager.register_worker(worker_id, worker)
                 
                 # Emitir señales
@@ -242,10 +272,12 @@ class WorkerManager(QObject):
                 # Limpiar registro activo
                 del self.active_workers[worker_id]
                 
-                # Desregistrar de ApplicationState
+                # Desregistrar de ApplicationState (lazy import)
+                app_state = _get_app_state()
                 app_state.unregister_worker(worker_id)
                 
-                # Desregistrar de MemoryManager
+                # Desregistrar de MemoryManager (lazy import)
+                memory_manager = _get_memory_manager()
                 memory_manager.unregister_worker(worker_id)
                 
                 # Emitir señal
@@ -305,8 +337,10 @@ class WorkerManager(QObject):
                 # Limpiar registro
                 del self.active_workers[worker_id]
                 
-                # Desregistrar de managers
+                # Desregistrar de managers (lazy import)
+                app_state = _get_app_state()
                 app_state.unregister_worker(worker_id)
+                memory_manager = _get_memory_manager()
                 memory_manager.unregister_worker(worker_id)
                 
                 print(f"Worker {worker_id} cancelado")
@@ -380,8 +414,14 @@ class WorkerManager(QObject):
             # Limpiar historial
             self.worker_history.clear()
             
-            # Desconectar observador
-            app_state.remove_observer(self._on_state_changed)
+            # Desconectar observador si está conectado (lazy import)
+            if self._state_observer_connected:
+                try:
+                    app_state = _get_app_state()
+                    app_state.remove_observer(self._on_state_changed)
+                    self._state_observer_connected = False
+                except:
+                    pass
             
             print("WorkerManager limpiado correctamente")
             
@@ -389,5 +429,74 @@ class WorkerManager(QObject):
             print(f"Error en limpieza de WorkerManager: {e}")
 
 
-# Instancia global del gestor de workers
-worker_manager = WorkerManager()
+# ===== LAZY INITIALIZATION PARA WORKER_MANAGER =====
+_worker_manager_instance = None
+_worker_manager_lock = threading.Lock()
+
+def get_worker_manager() -> WorkerManager:
+    """
+    Obtiene la instancia global de WorkerManager (Singleton lazy)
+    Crea la instancia solo cuando se solicita por primera vez
+    """
+    global _worker_manager_instance
+    
+    if _worker_manager_instance is None:
+        with _worker_manager_lock:
+            if _worker_manager_instance is None:
+                print("[WorkerManager] Creando instancia global...")
+                try:
+                    _worker_manager_instance = WorkerManager()
+                    print("[WorkerManager] Instancia global creada OK")
+                except Exception as e:
+                    print(f"[WorkerManager] ERROR CRÍTICO: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    # No lanzar excepción, devolver None para evitar fallos
+                    return None
+    
+    return _worker_manager_instance
+
+
+class _WorkerManagerProxy:
+    """
+    Proxy para acceso lazy a worker_manager
+    ⚠️ CRÍTICO: Solo crea la instancia cuando se accede a un atributo real
+    """
+    def __init__(self):
+        object.__setattr__(self, '_instance_cache', None)
+    
+    def _get_instance(self):
+        """Obtiene o crea la instancia de forma lazy"""
+        cache = object.__getattribute__(self, '_instance_cache')
+        if cache is None:
+            cache = get_worker_manager()
+            object.__setattr__(self, '_instance_cache', cache)
+        return cache
+    
+    def __getattr__(self, name):
+        """Acceso lazy a atributos"""
+        try:
+            instance = self._get_instance()
+            if instance is None:
+                return None
+            return getattr(instance, name)
+        except Exception as e:
+            print(f"[WorkerManagerProxy] ERROR accediendo a '{name}': {e}")
+            return None
+    
+    def __setattr__(self, name, value):
+        """Establece atributos"""
+        if name.startswith('_'):
+            object.__setattr__(self, name, value)
+        else:
+            try:
+                instance = self._get_instance()
+                if instance:
+                    setattr(instance, name, value)
+            except Exception as e:
+                print(f"[WorkerManagerProxy] ERROR estableciendo '{name}': {e}")
+
+
+# ⚠️ CRÍTICO: Crear el proxy pero NO la instancia
+# La instancia se creará solo cuando se acceda a un atributo por primera vez
+worker_manager = _WorkerManagerProxy()

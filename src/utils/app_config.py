@@ -75,12 +75,17 @@ class AppConfig:
                     # Fusionar con configuración por defecto
                     return self.merge_configs(self.DEFAULT_CONFIG, loaded_config)
             else:
-                # Crear archivo con configuración por defecto
-                self.save_config(self.DEFAULT_CONFIG)
+                # ⚠️ CRÍTICO: NO intentar escribir archivo durante __init__ en .exe
+                # Solo devolver configuración por defecto - el archivo se creará cuando se guarde
                 return self.DEFAULT_CONFIG.copy()
         except Exception as e:
-            from .logger import error
-            error(f"Error cargando configuración: {e}")
+            # ⚠️ CRÍTICO: En .exe, los archivos pueden no estar disponibles aún
+            # No usar logger aquí porque puede no estar inicializado
+            try:
+                from .logger import error
+                error(f"Error cargando configuración: {e}")
+            except:
+                pass  # Logger no disponible - continuar con defaults
             return self.DEFAULT_CONFIG.copy()
     
     def merge_configs(self, default: Dict, loaded: Dict) -> Dict:

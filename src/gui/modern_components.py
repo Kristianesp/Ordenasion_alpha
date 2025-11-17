@@ -14,7 +14,12 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QSize, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont, QIcon, QPixmap, QPainter, QColor
 
-from ..utils.theme_manager_optimized import theme_manager
+# Import opcional de theme_manager (módulo puede no existir)
+try:
+    from ..utils.theme_manager_optimized import theme_manager
+except ImportError:
+    theme_manager = None
+
 from ..utils.constants import UI_CONFIG
 
 

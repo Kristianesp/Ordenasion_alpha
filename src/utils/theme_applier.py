@@ -564,5 +564,7 @@ class ThemeApplier:
         return ThemeApplier.apply_theme_globally(theme_name, font_size)
 
 
-# Instancia global del aplicador de temas
+# Nota: ThemeApplier usa solo métodos estáticos/de clase
+# No es necesario crear una instancia, pero la mantenemos por compatibilidad
+# ⚠️ OPTIMIZACIÓN: Esta instancia no causa problemas porque __init__ no hace nada
 theme_applier = ThemeApplier()

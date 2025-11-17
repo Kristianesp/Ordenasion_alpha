@@ -410,5 +410,74 @@ class MemoryManager(QObject):
             print(f"Error en limpieza final: {e}")
 
 
-# Instancia global del gestor de memoria
-memory_manager = MemoryManager()
+# ===== LAZY INITIALIZATION PARA MEMORY_MANAGER =====
+_memory_manager_instance = None
+_memory_manager_lock = threading.Lock()
+
+def get_memory_manager() -> MemoryManager:
+    """
+    Obtiene la instancia global de MemoryManager (Singleton lazy)
+    Crea la instancia solo cuando se solicita por primera vez
+    """
+    global _memory_manager_instance
+    
+    if _memory_manager_instance is None:
+        with _memory_manager_lock:
+            if _memory_manager_instance is None:
+                print("[MemoryManager] Creando instancia global...")
+                try:
+                    _memory_manager_instance = MemoryManager()
+                    print("[MemoryManager] Instancia global creada OK")
+                except Exception as e:
+                    print(f"[MemoryManager] ERROR CRÍTICO: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    # No lanzar excepción, devolver None para evitar fallos
+                    return None
+    
+    return _memory_manager_instance
+
+
+class _MemoryManagerProxy:
+    """
+    Proxy para acceso lazy a memory_manager
+    ⚠️ CRÍTICO: Solo crea la instancia cuando se accede a un atributo real
+    """
+    def __init__(self):
+        object.__setattr__(self, '_instance_cache', None)
+    
+    def _get_instance(self):
+        """Obtiene o crea la instancia de forma lazy"""
+        cache = object.__getattribute__(self, '_instance_cache')
+        if cache is None:
+            cache = get_memory_manager()
+            object.__setattr__(self, '_instance_cache', cache)
+        return cache
+    
+    def __getattr__(self, name):
+        """Acceso lazy a atributos"""
+        try:
+            instance = self._get_instance()
+            if instance is None:
+                return None
+            return getattr(instance, name)
+        except Exception as e:
+            print(f"[MemoryManagerProxy] ERROR accediendo a '{name}': {e}")
+            return None
+    
+    def __setattr__(self, name, value):
+        """Establece atributos"""
+        if name.startswith('_'):
+            object.__setattr__(self, name, value)
+        else:
+            try:
+                instance = self._get_instance()
+                if instance:
+                    setattr(instance, name, value)
+            except Exception as e:
+                print(f"[MemoryManagerProxy] ERROR estableciendo '{name}': {e}")
+
+
+# ⚠️ CRÍTICO: Crear el proxy pero NO la instancia
+# La instancia se creará solo cuando se acceda a un atributo por primera vez
+memory_manager = _MemoryManagerProxy()
