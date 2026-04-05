@@ -4,7 +4,8 @@ MainWindowHandlers - Manejadores de eventos y señales de MainWindow
 Extraído de main_window.py para mejorar mantenibilidad
 """
 
-from PyQt6.QtWidgets import QMessageBox, QFileDialog, QMenu, QAction
+from PyQt6.QtWidgets import QMessageBox, QFileDialog, QMenu
+from PyQt6.QtGui import QAction
 from PyQt6.QtCore import QTimer, Qt
 from collections import defaultdict
 import os
