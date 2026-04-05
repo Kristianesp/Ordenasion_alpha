@@ -4,9 +4,10 @@ MainWindowHandlers - Manejadores de eventos y señales de MainWindow
 Extraído de main_window.py para mejorar mantenibilidad
 """
 
-from PyQt6.QtWidgets import QMessageBox, QFileDialog
+from PyQt6.QtWidgets import QMessageBox, QFileDialog, QMenu, QAction
 from PyQt6.QtCore import QTimer, Qt
 from collections import defaultdict
+import os
 
 
 class MainWindowHandlers:
@@ -271,3 +272,67 @@ class MainWindowHandlers:
             QTimer.singleShot(500, self.start_analysis)
         except Exception as e:
             self.log_message(f"❌ Error seleccionando disco: {e}")
+    
+    def show_context_menu(self, position):
+        """Muestra menú contextual para la tabla de movimientos"""
+        try:
+            # Obtener la fila donde se hizo clic
+            index = self.movements_table.indexAt(position)
+            if not index.isValid():
+                return
+                
+            row = index.row()
+            
+            # Obtener información del elemento
+            model = self.movements_table.model()
+            element_data = model.data(model.index(row, 1), Qt.ItemDataRole.DisplayRole)
+            destination_data = model.data(model.index(row, 2), Qt.ItemDataRole.DisplayRole)
+            
+            if not element_data:
+                return
+            
+            # Crear menú contextual
+            menu = QMenu(self)
+            
+            # Acción para abrir ubicación del archivo
+            if hasattr(self, 'folder_path') and self.folder_path:
+                open_location_action = QAction("📁 Abrir ubicación", self)
+                open_location_action.triggered.connect(lambda: self.open_file_location(self.folder_path))
+                menu.addAction(open_location_action)
+            
+            # Acción para expandir/contraer grupo (si es aplicable)
+            row_data = model.get_row_data(row) if hasattr(model, 'get_row_data') else None
+            if row_data and row_data.get('is_group', False):
+                if row_data.get('is_expanded', False):
+                    collapse_action = QAction("📁 Contraer grupo", self)
+                    collapse_action.triggered.connect(lambda: model.collapse_group(row) if hasattr(model, 'collapse_group') else None)
+                    menu.addAction(collapse_action)
+                else:
+                    expand_action = QAction("📂 Expandir grupo", self)
+                    expand_action.triggered.connect(lambda: model.expand_group(row) if hasattr(model, 'expand_group') else None)
+                    menu.addAction(expand_action)
+            
+            # Mostrar menú
+            menu.exec(self.movements_table.mapToGlobal(position))
+            
+        except Exception as e:
+            self.log_message(f"❌ Error en menú contextual: {str(e)}")
+    
+    def open_file_location(self, folder_path):
+        """Abre la ubicación del archivo en el explorador"""
+        try:
+            import subprocess
+            import sys
+            
+            if sys.platform == "win32":
+                # Windows - abrir explorer
+                subprocess.Popen(f'explorer "{folder_path}"')
+            elif sys.platform == "darwin":
+                # macOS
+                subprocess.Popen(["open", folder_path])
+            else:
+                # Linux
+                subprocess.Popen(["xdg-open", folder_path])
+                
+        except Exception as e:
+            self.log_message(f"❌ Error abriendo ubicación: {str(e)}")
