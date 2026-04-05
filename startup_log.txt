@@ -1,0 +1,23 @@
+================================================================================
+ORGANIZADOR ALPHA v3.0.2 - LOG DE INICIO
+Fecha: 2026-04-05 23:04:10
+================================================================================
+
+[2026-04-05 23:04:10.863] ✅ Log iniciado correctamente
+[2026-04-05 23:04:10.863] Python version: 3.12.10 (main, Apr  9 2025, 00:30:28) [GCC 12.2.0]
+[2026-04-05 23:04:10.863] Platform: linux
+[2026-04-05 23:04:10.863] Executable: /usr/local/bin/python
+[2026-04-05 23:04:10.863] Current directory: /workspace
+[2026-04-05 23:04:10.863] Añadiendo directorio src al path...
+[2026-04-05 23:04:10.863] Ejecutando desde script: /workspace
+[2026-04-05 23:04:10.863] ✅ Path añadido: /workspace/src
+[2026-04-05 23:04:10.863] ✅ Application path añadido: /workspace
+[2026-04-05 23:04:10.863] ✅ Directorio src existe
+[2026-04-05 23:04:10.863] Contenido de src: ['utils', 'core', 'gui', '__init__.py']
+[2026-04-05 23:04:10.863] Importando PyQt6...
+[2026-04-05 23:04:10.883] ❌ ERROR importando PyQt6: libEGL.so.1: cannot open shared object file: No such file or directory
+[2026-04-05 23:04:10.899] Traceback (most recent call last):
+  File "/workspace/main_optimized.py", line 163, in <module>
+    from PyQt6.QtWidgets import QApplication, QMessageBox
+ImportError: libEGL.so.1: cannot open shared object file: No such file or directory
+
