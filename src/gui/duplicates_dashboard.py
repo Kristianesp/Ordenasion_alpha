@@ -67,6 +67,6 @@ class DuplicatesDashboard(QWidget, DuplicateWidgets, DuplicateHandlers, ScanLogi
         
         # Modelo de tabla virtualizada
         self.model = VirtualizedDuplicatesModel([], parent=self)
-        self.results_table.setModel(self.model)
+        self.duplicates_table.setModel(self.model)
         
         print("[DuplicatesDashboard] UI inicializada")
