@@ -366,3 +366,29 @@ class MainWindowHandlers:
                 
         except Exception as e:
             self.log_message(f"❌ Error abriendo ubicación: {str(e)}")
+    
+    def apply_saved_interface_settings(self):
+        """Aplica la configuración de interfaz guardada (tema, fuente, etc.)"""
+        try:
+            from src.core.application_state import app_state
+            
+            # Obtener configuración guardada
+            saved_theme = app_state.get_saved_theme()
+            saved_font_size = app_state.get_saved_font_size()
+            
+            # Aplicar tema
+            if saved_theme:
+                self.log_message(f"🎨 Aplicando tema guardado: {saved_theme}")
+                # El tema se aplica automáticamente vía state_changed signal
+            
+            # Aplicar tamaño de fuente
+            if saved_font_size:
+                self.log_message(f"📝 Aplicando tamaño de fuente: {saved_font_size}px")
+                font = self.font()
+                font.setPointSize(saved_font_size)
+                self.setFont(font)
+            
+            self.log_message("✅ Configuración de interfaz aplicada")
+            
+        except Exception as e:
+            self.log_message(f"⚠️ Error aplicando configuración guardada: {e}")
