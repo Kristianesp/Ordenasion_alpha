@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
     QMessageBox, QCheckBox, QComboBox, QSizePolicy, QScrollArea,
     QStackedWidget
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QDateTime
 from PyQt6.QtGui import QFont, QColor, QPalette
 
 from src.core.disk_manager import DiskManager, DiskInfo
@@ -270,7 +270,7 @@ class DiskViewer(QWidget):
         """Agrega un mensaje al log"""
         log_display = self.analysis_widgets.get('log_display')
         if log_display:
-            timestamp = QTimer().currentTime().toString("HH:mm:ss")
+            timestamp = QDateTime.currentDateTime().toString("HH:mm:ss")
             log_display.append(f"[{timestamp}] {message}")
     
     def get_selected_disk_path(self) -> Optional[str]:

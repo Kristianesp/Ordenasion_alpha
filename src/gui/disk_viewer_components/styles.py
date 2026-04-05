@@ -406,3 +406,18 @@ class DiskViewerStyler:
         color = colors.get(color_type, colors['text_primary'])
         weight = "bold" if bold else "normal"
         return f'<span style="color: {color}; font-weight: {weight};">{content}</span>'
+    
+    @staticmethod
+    def apply_theme_styles(widget: QWidget, theme_name: str, colors: dict):
+        """Aplica todos los estilos del tema al DiskViewer"""
+        try:
+            # Aplicar estilos estáticos de la interfaz
+            DiskViewerStyler.apply_static_interface_styles(widget, theme_name, colors)
+            
+            # Aplicar estilos compactos a la tabla de discos
+            DiskViewerStyler.apply_compact_disk_viewer_styles(widget, theme_name, colors)
+            
+        except Exception as e:
+            if hasattr(widget, 'log_message'):
+                widget.log_message(f"⚠️ Error aplicando estilos del tema: {str(e)}")
+

@@ -1,15 +1,1 @@
-```
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-# Logs
-*.log
-
-# Environment
-.env
-.env.local
-.env.*
-```
+(src/gui/disk_viewer.py, src/gui/disk_viewer_components/styles.py)
