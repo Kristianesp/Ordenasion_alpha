@@ -7,7 +7,7 @@ Módulos reutilizables extraídos de main_window.py
 from .setup import MainWindowSetup
 from .handlers import MainWindowHandlers
 from .actions import MainWindowActions
-from .workers import WorkerManager
+from src.core.worker_manager import WorkerManager
 
 __all__ = [
     'MainWindowSetup',
