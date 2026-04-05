@@ -151,3 +151,73 @@ class DiskViewerHandlers:
                 "Error",
                 f"Error al actualizar discos:\n{str(e)}"
             )
+    
+    def __init__(self, disk_viewer=None):
+        """Inicializa el manejador con referencia al widget padre"""
+        self.disk_viewer = disk_viewer
+    
+    def on_cell_clicked(self, row: int, column: int):
+        """Maneja el click en una celda de la tabla"""
+        if self.disk_viewer is None:
+            return
+        try:
+            mount_item = self.disk_viewer.disks_table.item(row, 1)
+            if mount_item:
+                mountpoint = mount_item.text()
+                self.disk_viewer.current_selection = mountpoint
+                self.disk_viewer.log_message(f"📁 Disco seleccionado: {mountpoint}")
+                
+                # Emitir señal con la ruta del disco seleccionado
+                if hasattr(self.disk_viewer, 'disk_selected'):
+                    self.disk_viewer.disk_selected.emit(mountpoint)
+                
+                # Actualizar información detallada
+                self.disk_viewer.update_selected_disk_info(mountpoint)
+        except Exception as e:
+            if self.disk_viewer:
+                self.disk_viewer.log_message(f"⚠️ Error en selección de disco: {str(e)}")
+    
+    def refresh_disks(self):
+        """Refresca la información de todos los discos"""
+        if self.disk_viewer is None:
+            return
+        try:
+            self.disk_viewer._refresh_disks_internal()
+        except Exception as e:
+            self.disk_viewer.log_message(f"❌ Error al refrescar discos: {str(e)}")
+            QMessageBox.critical(
+                self.disk_viewer,
+                "Error",
+                f"Error al actualizar discos:\n{str(e)}"
+            )
+    
+    def on_disk_selection_changed(self):
+        """Maneja el cambio de selección en la tabla de discos"""
+        if self.disk_viewer is None:
+            return
+        DiskViewerHandlers.on_disk_selection_changed(self.disk_viewer)
+    
+    def on_analyze_and_organize(self, row: int):
+        """Analiza y organiza el disco en la fila especificada"""
+        if self.disk_viewer is None:
+            return
+        try:
+            mount_item = self.disk_viewer.disks_table.item(row, 1)
+            if mount_item:
+                mountpoint = mount_item.text()
+                self.disk_viewer.log_message(f"🔍 Analizando disco: {mountpoint}")
+                
+                # Emitir señal para que la ventana principal maneje el análisis
+                if hasattr(self.disk_viewer, 'analysis_requested'):
+                    self.disk_viewer.analysis_requested.emit(mountpoint)
+                
+                # Actualizar información del disco seleccionado
+                self.disk_viewer.update_selected_disk_info(mountpoint)
+        except Exception as e:
+            if self.disk_viewer:
+                self.disk_viewer.log_message(f"❌ Error al analizar disco: {str(e)}")
+                QMessageBox.critical(
+                    self.disk_viewer,
+                    "Error",
+                    f"Error al analizar el disco:\n{str(e)}"
+                )

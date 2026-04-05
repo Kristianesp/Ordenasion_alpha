@@ -60,7 +60,7 @@ class DiskViewer(QWidget):
         
         # Inicializar UI usando el builder
         self.styler = DiskViewerStyler()
-        self.handlers = DiskViewerHandlers()
+        self.handlers = DiskViewerHandlers(self)
         self._init_ui()
         self.setup_connections()
         
