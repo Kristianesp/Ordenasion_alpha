@@ -21,6 +21,16 @@ from src.gui.table_models import VirtualizedMovementsModel, CheckboxDelegate
 class MainWindowSetup:
     """Mixin para configuración de UI de MainWindow"""
     
+    def _init_state(self):
+        """Inicializa el estado centralizado de la aplicación"""
+        # El estado se maneja mediante app_state (singleton)
+        # Aquí solo se asegura que las variables locales estén inicializadas
+        self.folder_movements = []
+        self.file_movements = []
+        self.duplicates_dashboard = None
+        self._active_workers = []
+        self.disk_manager = None
+    
     def init_ui(self):
         """Inicializa la interfaz de usuario con el nuevo diseño optimizado"""
         self.setWindowTitle(UI_CONFIG["WINDOW_TITLE"])

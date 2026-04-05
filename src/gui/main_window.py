@@ -38,12 +38,6 @@ class FileOrganizerGUI(QMainWindow, MainWindowSetup, MainWindowHandlers, MainWin
         # === ESTADO CENTRALIZADO ===
         self._init_state()
         
-        # === DATOS LOCALES ===
-        self.folder_movements = []
-        self.file_movements = []
-        self.duplicates_dashboard = None
-        self._active_workers = []
-        
         # === CONFIGURACIÓN PERSISTENTE ===
         self.settings = QSettings("FileOrganizer", "MainWindow")
         
