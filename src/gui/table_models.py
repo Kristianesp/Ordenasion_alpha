@@ -4,11 +4,126 @@ Modelos virtualizados para tablas usando QAbstractTableModel
 Optimizado para manejar grandes cantidades de datos sin congelar la UI
 """
 
-from PyQt6.QtCore import QAbstractTableModel, Qt, QModelIndex, QVariant
-from PyQt6.QtGui import QColor, QFont
+from PyQt6.QtCore import QAbstractTableModel, Qt, QModelIndex, QVariant, QRect, QSize, QPoint
+from PyQt6.QtGui import QColor, QFont, QPainter, QPen
+from PyQt6.QtWidgets import QStyledItemDelegate, QStyle, QStyleOptionButton
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 from datetime import datetime
+
+
+class CheckboxDelegate(QStyledItemDelegate):
+    """Delegado personalizado para checkboxes centrados con colores del tema"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.parent_table = parent
+    
+    def paint(self, painter, option, index):
+        """Pinta el checkbox centrado en la celda con colores del tema actual"""
+        if not index.isValid():
+            return
+        
+        checked = index.data(Qt.ItemDataRole.CheckStateRole) == Qt.CheckState.Checked
+        theme_colors = self.get_theme_colors()
+        checkbox_rect = self.get_checkbox_rect(option.rect)
+        
+        painter.save()
+        try:
+            self.paint_custom_checkbox(painter, checkbox_rect, checked, theme_colors)
+        finally:
+            painter.restore()
+    
+    def get_theme_colors(self):
+        """Obtiene los colores del tema actual"""
+        try:
+            from src.utils.themes import ThemeManager
+            from src.utils.app_config import AppConfig
+            app_config = AppConfig()
+            current_theme = app_config.get_theme()
+            return ThemeManager.get_theme_colors(current_theme)
+        except:
+            return {
+                "primary": "#2563eb",
+                "border": "#e2e8f0",
+                "success": "#10b981",
+                "text_primary": "#1e293b",
+                "background": "#fefefe",
+                "surface": "#f8fafc"
+            }
+    
+    def paint_custom_checkbox(self, painter, rect, checked, colors):
+        """Pinta un checkbox personalizado con colores del tema"""
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.fillRect(rect, QColor(colors["background"]))
+        
+        if checked:
+            # Checkbox marcado - FONDO VERDE SÓLIDO
+            painter.fillRect(rect, QColor(colors["success"]))
+            
+            # Borde verde
+            pen = painter.pen()
+            pen.setWidth(2)
+            pen.setColor(QColor(colors["success"]))
+            painter.setPen(pen)
+            painter.drawRect(rect.adjusted(0, 0, -1, -1))
+            
+            # Checkmark blanco más visible
+            pen.setWidth(3)
+            pen.setColor(QColor("white"))
+            painter.setPen(pen)
+            
+            center_x = rect.x() + rect.width() // 2
+            center_y = rect.y() + rect.height() // 2
+            size = min(rect.width(), rect.height()) // 3
+            
+            check_points = [
+                QPoint(center_x - size//2, center_y),
+                QPoint(center_x - size//4, center_y + size//2),
+                QPoint(center_x + size//2, center_y - size//2)
+            ]
+            painter.drawPolyline(check_points)
+            
+            # Segundo checkmark para mayor visibilidad
+            check_points2 = [
+                QPoint(center_x - size//2 + 1, center_y + 1),
+                QPoint(center_x - size//4 + 1, center_y + size//2 + 1),
+                QPoint(center_x + size//2 + 1, center_y - size//2 + 1)
+            ]
+            painter.drawPolyline(check_points2)
+        else:
+            # Checkbox desmarcado - FONDO BLANCO CON BORDE VISIBLE
+            painter.fillRect(rect, QColor(colors["background"]))
+            
+            # Borde más grueso y visible
+            pen = painter.pen()
+            pen.setWidth(2)
+            pen.setColor(QColor(colors["primary"]))
+            painter.setPen(pen)
+            painter.drawRect(rect.adjusted(0, 0, -1, -1))
+    
+    def get_checkbox_rect(self, cell_rect):
+        """Calcula el rectángulo centrado para el checkbox"""
+        checkbox_size = 20
+        x = cell_rect.x() + (cell_rect.width() - checkbox_size) // 2
+        y = cell_rect.y() + (cell_rect.height() - checkbox_size) // 2
+        return QRect(x, y, checkbox_size, checkbox_size)
+    
+    def editorEvent(self, event, model, option, index):
+        """Maneja eventos del mouse para el checkbox"""
+        if event.type() == event.Type.MouseButtonPress:
+            if event.button() == Qt.MouseButton.LeftButton:
+                checkbox_rect = self.get_checkbox_rect(option.rect)
+                if checkbox_rect.contains(event.pos()):
+                    current_state = index.data(Qt.ItemDataRole.CheckStateRole)
+                    new_state = Qt.CheckState.Unchecked if current_state == Qt.CheckState.Checked else Qt.CheckState.Checked
+                    model.setData(index, new_state, Qt.ItemDataRole.CheckStateRole)
+                    return True
+        return False
+    
+    def sizeHint(self, option, index):
+        """Retorna el tamaño sugerido para la celda"""
+        return QSize(60, 40)
 
 
 class VirtualizedMovementsModel(QAbstractTableModel):
