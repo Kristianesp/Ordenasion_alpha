@@ -148,7 +148,7 @@ class MainWindowSetup:
         from src.gui.duplicates_dashboard import DuplicatesDashboard
         self.duplicates_dashboard = DuplicatesDashboard()
         duplicates_layout.addWidget(self.duplicates_dashboard)
-        self.duplicates_dashboard.status_update.connect(self.log_message)
+        # NOTA: La conexión de status_update se hace después en init_ui
         
         # Configurar pestaña de log
         log_layout = QVBoxLayout(self.log_tab)
@@ -510,3 +510,131 @@ class MainWindowSetup:
     def _connect_input_events(self):
         """Conecta eventos de entrada"""
         self.folder_input.textChanged.connect(self.on_folder_path_changed)
+    
+    def create_log_widget(self, layout):
+        """Crea el widget de log con funcionalidad de exportar"""
+        from PyQt6.QtWidgets import QTextEdit, QPushButton, QLabel, QHBoxLayout, QVBoxLayout
+        from PyQt6.QtCore import Qt
+        
+        # Header del log
+        header_layout = QHBoxLayout()
+
+        log_title = QLabel("📝 REGISTRO DE OPERACIONES")
+        log_title.setToolTip("📝 Historial completo de todas las operaciones realizadas en la aplicación")
+        log_title.setObjectName("log_title_label")
+        header_layout.addWidget(log_title)
+
+        header_layout.addStretch()
+
+        # Botones de control del log
+        self.clear_log_btn = QPushButton("🗑️ Limpiar Log")
+        self.clear_log_btn.setToolTip("🗑️ Limpia todo el contenido del log")
+        self.clear_log_btn.clicked.connect(self.clear_log)
+        header_layout.addWidget(self.clear_log_btn)
+
+        self.export_log_btn = QPushButton("📤 Exportar a TXT")
+        self.export_log_btn.setToolTip("📤 Exporta el contenido del log a un archivo de texto")
+        self.export_log_btn.clicked.connect(self.export_log)
+        header_layout.addWidget(self.export_log_btn)
+
+        layout.addLayout(header_layout)
+
+        # Widget de log principal
+        self.log_text = QTextEdit()
+        self.log_text.setReadOnly(True)
+        self.log_text.setToolTip("📝 Registro detallado de todas las operaciones realizadas en la aplicación")
+        self.log_text.setObjectName("log_text")
+
+        # Configurar el log con scroll automático
+        self.log_text.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.log_text.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
+        layout.addWidget(self.log_text)
+
+        # Información del log
+        info_layout = QHBoxLayout()
+
+        self.log_info_label = QLabel("📊 Total de entradas: 0")
+        self.log_info_label.setToolTip("📊 Número total de entradas en el log")
+        self.log_info_label.setObjectName("log_info_label")
+        info_layout.addWidget(self.log_info_label)
+
+        info_layout.addStretch()
+
+        # Botón para ir al final del log
+        self.scroll_to_bottom_btn = QPushButton("⬇️ Ir al Final")
+        self.scroll_to_bottom_btn.setToolTip("⬇️ Desplaza el log hasta la entrada más reciente")
+        self.scroll_to_bottom_btn.clicked.connect(self.scroll_log_to_bottom)
+        info_layout.addWidget(self.scroll_to_bottom_btn)
+
+        layout.addLayout(info_layout)
+
+        # Mensaje inicial
+        self.log_message("🚀 Aplicación iniciada - Log de operaciones activo")
+    
+    def log_message(self, message):
+        """Añade un mensaje al log"""
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        if hasattr(self, 'log_text') and self.log_text:
+            self.log_text.append(f"[{timestamp}] {message}")
+
+            # Auto-scroll al final
+            scrollbar = self.log_text.verticalScrollBar()
+            scrollbar.setValue(scrollbar.maximum())
+
+            # Actualizar contador de entradas
+            self.update_log_info()
+    
+    def update_log_info(self):
+        """Actualiza el contador de entradas del log"""
+        if hasattr(self, 'log_text') and self.log_text:
+            count = self.log_text.document().blockCount()
+            self.log_info_label.setText(f"📊 Total de entradas: {count}")
+    
+    def scroll_log_to_bottom(self):
+        """Desplaza el log hasta el final"""
+        if hasattr(self, 'log_text') and self.log_text:
+            scrollbar = self.log_text.verticalScrollBar()
+            scrollbar.setValue(scrollbar.maximum())
+    
+    def clear_log(self):
+        """Limpia todo el contenido del log"""
+        from PyQt6.QtWidgets import QMessageBox
+        reply = QMessageBox.question(
+            self, "Limpiar Log",
+            "¿Estás seguro de que quieres limpiar todo el contenido del log?\n\n"
+            "Esta acción no se puede deshacer.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            if hasattr(self, 'log_text') and self.log_text:
+                self.log_text.clear()
+                self.log_message("🗑️ Log limpiado por el usuario")
+    
+    def export_log(self):
+        """Exporta el contenido del log a un archivo de texto"""
+        from datetime import datetime
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        
+        # Generar nombre de archivo con timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        default_filename = f"log_organizador_{timestamp}.txt"
+        
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "📤 Exportar Log",
+            default_filename,
+            "Archivos de texto (*.txt);;Todos los archivos (*.*)"
+        )
+        
+        if file_path:
+            try:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(self.log_text.toPlainText())
+                self.log_message(f"✅ Log exportado a: {file_path}")
+                QMessageBox.information(self, "Éxito", f"Log exportado correctamente a:\n{file_path}")
+            except Exception as e:
+                self.log_message(f"❌ Error exportando log: {e}")
+                QMessageBox.critical(self, "Error", f"No se pudo exportar el log:\n{e}")
