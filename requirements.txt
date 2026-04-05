@@ -1,67 +1,76 @@
 # 🚀 DEPENDENCIAS - ORGANIZADOR PROFESIONAL DE DISCOS
-# Archivo de requisitos para instalar todas las dependencias necesarias
+# Archivo de requisitos actualizado después de reestructuración (2026)
+# Compatible con Python 3.8+
 
-# === DEPENDENCIAS BASE (Ya instaladas) ===
+# === DEPENDENCIAS PRINCIPALES (OBLIGATORIAS) ===
 PyQt6>=6.4.0          # Interfaz gráfica principal
-
-# === DEPENDENCIAS NUEVAS - PRIORIDAD 1 ===
 psutil>=5.9.0          # Información del sistema y discos
-hashlib                 # Cálculo de hashes (incluido en Python)
-pathlib                 # Manejo de rutas (incluido en Python)
-requests>=2.28.0
-WMI>=1.5.1
-pySMART>=1.4.1
 
-# === DEPENDENCIAS NUEVAS - PRIORIDAD 2 ===
-Pillow>=9.5.0          # Procesamiento de imágenes y metadatos
-matplotlib>=3.7.0      # Gráficos y visualizaciones
-numpy>=1.24.0          # Cálculos numéricos (dependencia de matplotlib)
+# === MÓDULOS ESTÁNDAR DE PYTHON (NO REQUIEREN INSTALACIÓN) ===
+# Los siguientes módulos ya vienen incluidos en Python:
+# hashlib, json, os, platform, re, shutil, sqlite3, subprocess, 
+# sys, threading, time, gc, weakref, pathlib, dataclasses
 
-# === DEPENDENCIAS NUEVAS - PRIORIDAD 3 ===
-sqlite3                 # Base de datos local (incluido en Python)
-schedule>=1.2.0         # Tareas programadas
-reportlab>=4.0.0        # Generación de reportes PDF
+# === DEPENDENCIAS OPCIONALES (Para funcionalidades avanzadas) ===
+# Descomentar solo si necesitas estas funcionalidades específicas:
 
-# === DEPENDENCIAS OPCIONALES - PRIORIDAD 4 ===
-# Las siguientes dependencias se instalarán según necesidad:
+# Para información SMART detallada en Windows:
+# wmi>=1.5.1           # Solo Windows - Información WMI del sistema
+# pySMART>=1.4.1       # Solo Linux/Mac - Información SMART de discos
+
+# Para procesamiento de imágenes y metadatos:
+# Pillow>=9.5.0        # Procesamiento de imágenes
+
+# Para gráficos y visualizaciones avanzadas:
+# matplotlib>=3.7.0    # Gráficos estadísticos
+# numpy>=1.24.0        # Cálculos numéricos
+
+# Para funcionalidades web y reportes:
+# requests>=2.28.0     # Peticiones HTTP
+# reportlab>=4.0.0     # Generación de PDFs
+
+# Para tareas programadas:
+# schedule>=1.2.0      # Programación de tareas
 
 # Para análisis de contenido avanzado:
-# python-magic>=0.4.27          # Detección de tipos de archivo
-# exifread>=3.1.0               # Metadatos de imágenes
-# mutagen>=1.47.0               # Metadatos de audio/video
+# python-magic>=0.4.27 # Detección de tipos de archivo
+# exifread>=3.1.0      # Metadatos EXIF de imágenes
+# mutagen>=1.47.0      # Metadatos de audio/video
 
-# Para procesamiento de texto:
-# python-docx>=0.8.11           # Lectura de documentos Word
-# PyPDF2>=3.0.0                 # Lectura de PDFs
-# openpyxl>=3.1.0               # Lectura de Excel
+# Para lectura de documentos:
+# python-docx>=0.8.11  # Documentos Word (.docx)
+# PyPDF2>=3.0.0        # Archivos PDF
+# openpyxl>=3.1.0      # Archivos Excel (.xlsx)
 
-# Para compresión y archivos:
-# py7zr>=0.20.0                 # Soporte para archivos 7z
-# rarfile>=4.0                  # Soporte para archivos RAR
-
-# Para interfaz avanzada:
-# PyQt6-Charts>=6.4.0           # Gráficos avanzados de Qt
-# PyQt6-WebEngine>=6.4.0        # Motor web integrado
+# Para archivos comprimidos:
+# py7zr>=0.20.0        # Archivos 7z
+# rarfile>=4.0         # Archivos RAR (requiere unrar)
 
 # === INSTRUCCIONES DE INSTALACIÓN ===
 
-# Instalar dependencias básicas:
-# pip install -r requirements.txt
+# 1. Instalar dependencias mínimas (RECOMENDADO):
+#    pip install -r requirements.txt
 
-# Instalar dependencias opcionales según necesidad:
-# pip install python-magic exifread mutagen
-# pip install python-docx PyPDF2 openpyxl
-# pip install py7zr rarfile
-# pip install PyQt6-Charts PyQt6-WebEngine
+# 2. Instalar con dependencias opcionales específicas:
+#    pip install wmi pySMART    # Solo si necesitas información SMART completa
+#    pip install Pillow         # Solo si necesitas procesamiento de imágenes
+#    pip install matplotlib numpy  # Solo si necesitas gráficos avanzados
+
+# 3. Usar entorno virtual (RECOMENDADO):
+#    python -m venv venv
+#    venv\Scripts\activate      # Windows
+#    source venv/bin/activate   # Linux/Mac
+#    pip install -r requirements.txt
 
 # === NOTAS IMPORTANTES ===
 
-# 1. Algunas dependencias pueden requerir compiladores en Windows
-# 2. python-magic puede requerir instalación manual en algunos sistemas
-# 3. Las dependencias se instalarán progresivamente según las prioridades
-# 4. Se recomienda usar un entorno virtual: python -m venv venv
+# 1. Este proyecto ha sido reestructurado para ser más modular y ligero
+# 2. Solo PyQt6 y psutil son estrictamente necesarias para la funcionalidad básica
+# 3. Las demás dependencias son opcionales según las funcionalidades que necesites
+# 4. En Windows, algunas librerías pueden requerir Microsoft C++ Build Tools
 
 # === VERSIÓN DEL ARCHIVO ===
-# Versión: 1.0
-# Última actualización: 22/08/2025
-# Compatible con: Python 3.8+
+# Versión: 2.0 (Post-reestructuración)
+# Última actualización: 2026-04-06
+# Compatible con: Python 3.8+, PyQt6 6.4+, psutil 5.9+
+# Estado: ✅ Verificado - Todas las importaciones analizadas
