@@ -14,6 +14,35 @@ import os
 class MainWindowHandlers:
     """Mixin para manejadores de eventos de MainWindow"""
     
+    def setup_connections(self):
+        """Configura las conexiones básicas de señales y slots"""
+        try:
+            # Conectar menú contextual de la tabla
+            if hasattr(self, 'movements_table'):
+                self.movements_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+                self.movements_table.customContextMenuRequested.connect(self.show_context_menu)
+            
+            self.log_message("✅ Conexiones básicas configuradas")
+        except Exception as e:
+            self.log_message(f"❌ Error configurando conexiones: {e}")
+    
+    def setup_shortcuts(self):
+        """Configura atajos de teclado"""
+        try:
+            from PyQt6.QtGui import QKeySequence, QShortcut
+            
+            # Atajo para analizar (F5)
+            shortcut_analyze = QShortcut(QKeySequence("F5"), self)
+            shortcut_analyze.activated.connect(self.start_analysis)
+            
+            # Atajo para organizar (F9)
+            shortcut_organize = QShortcut(QKeySequence("F9"), self)
+            shortcut_organize.activated.connect(self.start_organization)
+            
+            self.log_message("✅ Atajos de teclado configurados")
+        except Exception as e:
+            self.log_message(f"❌ Error configurando atajos: {e}")
+    
     def setup_state_observers(self):
         """Configura observadores del estado centralizado"""
         try:
