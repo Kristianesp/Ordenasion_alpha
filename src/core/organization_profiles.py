@@ -133,6 +133,7 @@ class ProfileManager:
         """Establece un perfil como activo"""
         if self.get_profile(name):
             self.active_profile = name
+            self.save_profiles()
             return True
         return False
     

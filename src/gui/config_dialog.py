@@ -19,6 +19,7 @@ from PyQt6.QtGui import QFont, QIcon, QPalette, QColor
 
 from src.utils.constants import COLORS, DIALOG_STYLES
 from src.core.category_manager import CategoryManager
+from src.gui.rule_panel import RulePanel
 
 
 class ConfigDialog(QDialog):
@@ -158,6 +159,12 @@ class ConfigDialog(QDialog):
         self.remove_cat_btn.setFixedHeight(36)  # ALTURA ESTANDARIZADA
         self.remove_cat_btn.setProperty("styleClass", "error")  # Usa color error del tema
         cat_buttons_layout.addWidget(self.remove_cat_btn)
+
+        self.rules_btn = QPushButton("📋 Reglas")
+        self.rules_btn.setToolTip("📋 Gestiona reglas personalizadas de categorización")
+        self.rules_btn.clicked.connect(self.open_rules_panel)
+        self.rules_btn.setFixedHeight(36)
+        cat_buttons_layout.addWidget(self.rules_btn)
         
         categories_layout.addLayout(cat_buttons_layout)
         left_column.addWidget(categories_group)
@@ -459,6 +466,11 @@ class ConfigDialog(QDialog):
     def get_updated_categories(self) -> Dict[str, List[str]]:
         """Retorna las categorías actualizadas"""
         return self.category_manager.get_categories()
+
+    def open_rules_panel(self):
+        """Abre el panel visual de reglas personalizadas"""
+        dialog = RulePanel(self, self.category_manager)
+        dialog.exec()
     
     def update_global_index(self):
         """Actualiza el índice inverso global"""

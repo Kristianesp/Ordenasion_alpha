@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QFileDialog,
+    QInputDialog,
     QTextEdit,
     QCheckBox,
     QSpinBox,
@@ -48,13 +49,14 @@ from src.utils.theme_cache import ThemeCache
 from src.utils.app_config import AppConfig
 from src.core.category_manager import CategoryManager
 from src.core.disk_manager import DiskManager
+from src.core.organization_profiles import ProfileManager
+from src.core.transaction_manager import TransactionManager
 from src.core.workers import AnalysisWorker, OrganizeWorker
 from src.core.application_state import app_state, EventType
 from src.gui.disk_viewer import DiskViewer
 from src.gui.config_dialog import ConfigDialog
 from src.gui.duplicates_dashboard import DuplicatesDashboard, CheckboxDelegate
 from src.gui.table_models import VirtualizedMovementsModel
-from src.gui.drop_zone import DropZone
 from src.gui.preview_dialog import PreviewDialog
 from src.gui.filter_bar import FilterBar
 
@@ -95,6 +97,9 @@ class FileOrganizerGUI(QMainWindow):
         self.folder_movements = []
         self.file_movements = []
         self.duplicates_dashboard = None
+        self.profile_manager = ProfileManager()
+        self.transaction_manager = TransactionManager()
+        self.last_transaction_id = None
         self._active_workers = []  # Lista de workers activos para limpieza
         # Lazy loading flags para pestanas
         self._disk_viewer_initialized = False
@@ -107,6 +112,9 @@ class FileOrganizerGUI(QMainWindow):
         self.setup_shortcuts()
         self.setup_state_observers()
         self.apply_saved_interface_settings()
+        active_profile = self.profile_manager.get_active_profile()
+        if active_profile and hasattr(self, "profile_combo"):
+            self.profile_combo.setCurrentText(active_profile.name)
 
     def _init_disk_manager(self):
         """Inicializa DiskManager usando el estado centralizado"""
@@ -194,6 +202,25 @@ class FileOrganizerGUI(QMainWindow):
         source_layout.setContentsMargins(16, 20, 16, 16)
         source_layout.setSpacing(10)
 
+        profile_row = QHBoxLayout()
+        profile_row.setSpacing(8)
+        profile_row.addWidget(QLabel("🧩 Perfil:"))
+        self.profile_combo = QComboBox()
+        self.profile_combo.setFixedHeight(34)
+        self.profile_combo.setMinimumWidth(240)
+        self.profile_combo.addItems(self.profile_manager.get_profile_names())
+        profile_row.addWidget(self.profile_combo)
+        self.load_profile_btn = QPushButton("📥 Cargar")
+        self.load_profile_btn.setFixedHeight(34)
+        self.load_profile_btn.clicked.connect(self.load_selected_profile)
+        profile_row.addWidget(self.load_profile_btn)
+        self.save_profile_btn = QPushButton("💾 Guardar perfil")
+        self.save_profile_btn.setFixedHeight(34)
+        self.save_profile_btn.clicked.connect(self.save_current_profile)
+        profile_row.addWidget(self.save_profile_btn)
+        profile_row.addStretch()
+        source_layout.addLayout(profile_row)
+
         # Fila 1: Input + Examinar
         input_row = QHBoxLayout()
         input_row.setSpacing(10)
@@ -250,6 +277,13 @@ class FileOrganizerGUI(QMainWindow):
         source_layout.addLayout(opts_row)
 
         ol.addWidget(source_group)
+
+        self.filter_bar = FilterBar(
+            sorted(self.category_manager.get_categories().keys()),
+            self,
+        )
+        self.filter_bar.filter_changed.connect(self._on_filter_changed)
+        ol.addWidget(self.filter_bar)
 
         # Barra de selección compacta sobre la tabla
         sel_bar = QHBoxLayout()
@@ -316,13 +350,28 @@ class FileOrganizerGUI(QMainWindow):
         self.movements_model.dataChanged.connect(self.on_model_data_changed)
         self.movements_table.doubleClicked.connect(self.on_table_double_clicked)
 
-        # Botón Organizar Archivos - ANCHO COMPLETO
+        action_bar = QHBoxLayout()
+        action_bar.setSpacing(8)
+
+        self.preview_btn = QPushButton("👁️ Preview")
+        self.preview_btn.setFixedHeight(42)
+        self.preview_btn.setEnabled(False)
+        self.preview_btn.clicked.connect(self.open_selection_preview)
+        action_bar.addWidget(self.preview_btn)
+
         self.organize_btn = QPushButton("📁 ORGANIZAR ARCHIVOS")
         self.organize_btn.setObjectName("organize_button")
-        self.organize_btn.setFixedHeight(52)
+        self.organize_btn.setFixedHeight(42)
         self.organize_btn.setEnabled(False)
         self.organize_btn.clicked.connect(self.start_organization)
-        ol.addWidget(self.organize_btn)
+        action_bar.addWidget(self.organize_btn, 1)
+
+        self.rollback_btn = QPushButton("↩️ Deshacer")
+        self.rollback_btn.setFixedHeight(42)
+        self.rollback_btn.setEnabled(False)
+        self.rollback_btn.clicked.connect(self.rollback_last_operation)
+        action_bar.addWidget(self.rollback_btn)
+        ol.addLayout(action_bar)
 
         # Progreso (solo visible durante operaciones)
         progress_layout = QHBoxLayout()
@@ -800,8 +849,10 @@ class FileOrganizerGUI(QMainWindow):
             # Limpiar resultados anteriores
             self.folder_movements = []
             self.file_movements = []
+            self.preview_btn.setEnabled(False)
 
             # Log
+            self.app_config.set_min_similarity(self.similarity_spinbox.value())
             self.log_message(f"🔍 Iniciando análisis de: {folder_path}")
 
             # Crear worker usando el gestor centralizado
@@ -864,6 +915,7 @@ class FileOrganizerGUI(QMainWindow):
         # Habilitar botones
         self.analyze_btn.setEnabled(True)
         self.organize_btn.setEnabled(True)
+        self.preview_btn.setEnabled(True)
 
         # Ocultar progreso
         self.progress_bar.setVisible(False)
@@ -871,6 +923,12 @@ class FileOrganizerGUI(QMainWindow):
         # Log
         total_items = len(folder_movements) + len(file_movements)
         self.log_message(f"✅ Analisis completado: {total_items} elementos encontrados")
+
+        if hasattr(self, "filter_bar"):
+            self.filter_bar.update_categories(
+                sorted({mov["category"] for mov in folder_movements + file_movements})
+            )
+            self.filter_bar.update_count(self.movements_model.get_visible_count())
 
         # Mostrar estadisticas
         if stats:
@@ -891,6 +949,7 @@ class FileOrganizerGUI(QMainWindow):
         # Habilitar botones
         self.analyze_btn.setEnabled(True)
         self.organize_btn.setEnabled(False)
+        self.preview_btn.setEnabled(False)
 
         # Ocultar progreso
         self.progress_bar.setVisible(False)
@@ -1029,7 +1088,11 @@ class FileOrganizerGUI(QMainWindow):
     def update_selection_count(self):
         """🚀 MEJORA: Actualiza el contador usando el modelo virtualizado"""
         selected_rows = self.movements_model.get_checked_rows()
-        total_count = self.movements_model.rowCount()
+        total_count = sum(
+            1
+            for row in range(self.movements_model.rowCount())
+            if not (self.movements_model.get_row_data(row) or {}).get("is_child", False)
+        )
         selected_count = len(selected_rows)
 
         self.selection_count_label.setText(
@@ -1038,9 +1101,13 @@ class FileOrganizerGUI(QMainWindow):
 
         # Habilitar/deshabilitar botón de organizar según selección
         self.organize_btn.setEnabled(selected_count > 0)
+        self.preview_btn.setEnabled(selected_count > 0)
 
         # Actualizar estadísticas de elementos seleccionados
         self.update_selected_statistics()
+
+        if hasattr(self, "filter_bar"):
+            self.filter_bar.update_count(self.movements_model.get_visible_count())
 
     def update_selected_statistics(self):
         """🚀 MEJORA: Actualiza las estadísticas usando el modelo virtualizado"""
@@ -1057,7 +1124,7 @@ class FileOrganizerGUI(QMainWindow):
                 selected_size += row_data.get("size_bytes", 0)
 
                 # Contar archivos
-                selected_files += 1
+                selected_files += row_data.get("file_count", 1)
 
         # Actualizar las tarjetas de estadísticas
         self.total_size_label.setText(f"💾 {self.format_size(selected_size)}")
@@ -1181,32 +1248,46 @@ class FileOrganizerGUI(QMainWindow):
                 "⚙️ <b>Categorías disponibles:</b> Sin datos"
             )
 
-    def start_organization(self):
-        """🚀 MEJORA: Inicia la organización usando el modelo virtualizado"""
-        # Obtener elementos seleccionados del modelo
+    def get_selected_movements(self):
+        """Obtiene carpetas y archivos seleccionados desde el modelo."""
         selected_folder_movements = []
         selected_file_movements = []
-
-        selected_rows = self.movements_model.get_checked_rows()
-
-        for row in selected_rows:
+        for row in self.movements_model.get_checked_rows():
             row_data = self.movements_model.get_row_data(row)
-
             if not row_data:
                 continue
-
             row_type = row_data.get("type", "")
-
             if row_type == "folder":
-                # Es una carpeta
                 original_data = row_data.get("original_data")
                 if original_data:
                     selected_folder_movements.append(original_data)
-
             elif row_type == "file_group":
-                # Es un grupo de archivos sueltos
-                group_files = row_data.get("group_files", [])
-                selected_file_movements.extend(group_files)
+                selected_file_movements.extend(row_data.get("group_files", []))
+        return selected_folder_movements, selected_file_movements
+
+    def open_selection_preview(self):
+        """Abre la vista previa de la selección actual sin ejecutar la organización."""
+        folder_movements, file_movements = self.get_selected_movements()
+        if not folder_movements and not file_movements:
+            QMessageBox.information(
+                self,
+                "Sin selección",
+                "Selecciona al menos un grupo o carpeta para ver la vista previa.",
+            )
+            return
+
+        preview = PreviewDialog(
+            folder_movements,
+            file_movements,
+            self.folder_input.text().strip(),
+            self,
+            organize_by_date=self.organize_by_date_checkbox.isChecked(),
+        )
+        preview.exec()
+
+    def start_organization(self):
+        """🚀 MEJORA: Inicia la organización usando el modelo virtualizado"""
+        selected_folder_movements, selected_file_movements = self.get_selected_movements()
 
         # Verificar si se deben mover carpetas completas según el checkbox
         move_folders = self.move_folders_checkbox.isChecked()
@@ -1252,11 +1333,19 @@ class FileOrganizerGUI(QMainWindow):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
 
+        if reply != QMessageBox.StandardButton.Yes:
+            self.log_message("ℹ️ Organización cancelada antes del preview")
+            return
+
         folder_path = self.folder_input.text().strip()
 
         # Mostrar Preview antes de organizar
         preview = PreviewDialog(
-            selected_folder_movements, selected_file_movements, folder_path, self
+            selected_folder_movements,
+            selected_file_movements,
+            folder_path,
+            self,
+            organize_by_date=self.organize_by_date_checkbox.isChecked(),
         )
         if preview.exec() != QDialog.DialogCode.Accepted:
             self.log_message("Organizacion cancelada por el usuario (preview)")
@@ -1265,7 +1354,11 @@ class FileOrganizerGUI(QMainWindow):
         # Crear worker usando el gestor centralizado
         worker_id = f"organize_{int(time.time())}"
         organize_worker = OrganizeWorker(
-            folder_path, selected_folder_movements, selected_file_movements
+            folder_path,
+            selected_folder_movements,
+            selected_file_movements,
+            organize_by_date=self.organize_by_date_checkbox.isChecked(),
+            check_duplicates=self.check_duplicates_checkbox.isChecked(),
         )
 
         # Guardar referencia al worker para limpieza
@@ -1276,6 +1369,7 @@ class FileOrganizerGUI(QMainWindow):
         # Conectar señales específicas del worker
         organize_worker.progress_update.connect(self.log_message)
         organize_worker.organize_complete.connect(self.on_organize_complete)
+        organize_worker.rollback_available.connect(self.on_rollback_available)
 
         # Conectar señal de finalización para limpiar el worker
         organize_worker.finished.connect(lambda: self._cleanup_worker(organize_worker))
@@ -1297,6 +1391,113 @@ class FileOrganizerGUI(QMainWindow):
         else:
             self.log_message("❌ " + message)
             QMessageBox.critical(self, "Error de Organización", message)
+
+    def on_rollback_available(self, transaction_id: str):
+        """Guarda la última transacción disponible para deshacer."""
+        self.last_transaction_id = transaction_id
+        self.rollback_btn.setEnabled(bool(transaction_id))
+        self.log_message(f"↩️ Rollback disponible: {transaction_id}")
+
+    def rollback_last_operation(self):
+        """Revierte la última organización confirmada."""
+        if not self.last_transaction_id:
+            QMessageBox.information(
+                self,
+                "Sin historial",
+                "No hay una transacción reciente para deshacer.",
+            )
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Deshacer última organización",
+            "¿Quieres revertir la última organización completada?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        if self.transaction_manager.rollback_transaction(self.last_transaction_id):
+            self.log_message(f"✅ Rollback completado: {self.last_transaction_id}")
+            QMessageBox.information(
+                self,
+                "Rollback completado",
+                "Los cambios de la última organización se han revertido.",
+            )
+            self.rollback_btn.setEnabled(False)
+            self.last_transaction_id = None
+        else:
+            self.log_message(f"❌ Error al revertir: {self.last_transaction_id}")
+            QMessageBox.warning(
+                self,
+                "Rollback incompleto",
+                "No se pudieron revertir todos los cambios. Revisa el log de operaciones.",
+            )
+
+    def refresh_profiles(self):
+        """Recarga la lista de perfiles en la interfaz."""
+        if not hasattr(self, "profile_combo"):
+            return
+        current = self.profile_combo.currentText()
+        self.profile_combo.clear()
+        self.profile_combo.addItems(self.profile_manager.get_profile_names())
+        index = self.profile_combo.findText(current)
+        if index >= 0:
+            self.profile_combo.setCurrentIndex(index)
+
+    def load_selected_profile(self):
+        """Aplica el perfil seleccionado a la UI."""
+        profile_name = self.profile_combo.currentText().strip()
+        profile = self.profile_manager.get_profile(profile_name)
+        if not profile:
+            return
+
+        self.folder_input.setText(profile.folder_path)
+        self.move_folders_checkbox.setChecked(profile.move_folders)
+        self.similarity_spinbox.setValue(profile.similarity_threshold)
+        self.organize_by_date_checkbox.setChecked(profile.organize_by_date)
+        self.log_message(f"🧩 Perfil cargado: {profile.name}")
+
+    def save_current_profile(self):
+        """Guarda el estado actual en un perfil."""
+        current_name = self.profile_combo.currentText().strip()
+        suggested_name = current_name or "Nuevo perfil"
+        profile_name, ok = QInputDialog.getText(
+            self,
+            "Guardar perfil",
+            "Nombre del perfil:",
+            text=suggested_name,
+        )
+        if not ok or not profile_name.strip():
+            return
+
+        profile = self.profile_manager.get_profile(profile_name.strip())
+        if profile is None:
+            try:
+                profile = self.profile_manager.create_profile(profile_name.strip())
+            except ValueError:
+                profile = self.profile_manager.get_profile(profile_name.strip())
+
+        if profile is None:
+            QMessageBox.warning(self, "Error", "No se pudo crear el perfil.")
+            return
+
+        profile.folder_path = self.folder_input.text().strip()
+        profile.move_folders = self.move_folders_checkbox.isChecked()
+        profile.similarity_threshold = self.similarity_spinbox.value()
+        profile.organize_by_date = self.organize_by_date_checkbox.isChecked()
+        profile.selected_categories = sorted(
+            {
+                row_data.get("category")
+                for row in self.movements_model.get_checked_rows()
+                if (row_data := self.movements_model.get_row_data(row))
+            }
+        )
+        self.profile_manager.update_profile(profile)
+        self.profile_manager.set_active_profile(profile.name)
+        self.refresh_profiles()
+        self.profile_combo.setCurrentText(profile.name)
+        self.log_message(f"💾 Perfil guardado: {profile.name}")
 
     def open_configuration(self):
         """Abre la ventana de configuración"""
@@ -1329,6 +1530,7 @@ class FileOrganizerGUI(QMainWindow):
             # SOLO UNA APLICACIÓN para evitar conflictos
             theme = self.app_config.get_theme()
             font_size = self.app_config.get_font_size()
+            self.similarity_spinbox.setValue(self.app_config.get_min_similarity())
 
             # Aplicar tema y fuente JUNTOS en una sola operación
             self.apply_theme_and_font_together(theme, font_size)

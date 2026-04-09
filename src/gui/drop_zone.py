@@ -7,6 +7,9 @@ Permite arrastrar carpetas directamente sobre la aplicacion
 from PyQt6.QtWidgets import QFrame, QVBoxLayout, QLabel
 from PyQt6.QtCore import Qt, pyqtSignal
 
+from src.utils.app_config import AppConfig
+from src.utils.themes import ThemeManager
+
 
 class DropZone(QFrame):
     """Zona donde se pueden arrastrar carpetas para abrirlas directamente"""
@@ -29,11 +32,11 @@ class DropZone(QFrame):
         
         self.icon_label = QLabel("📂")
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.icon_label.setStyleSheet("font-size: 32px;")
+        self.icon_label.setObjectName("drop_zone_icon")
         
         self.text_label = QLabel("Arrastra una carpeta aqui o usa Examinar")
         self.text_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.text_label.setStyleSheet("color: gray; font-size: 14px;")
+        self.text_label.setObjectName("drop_zone_text")
         
         layout.addWidget(self.icon_label)
         layout.addWidget(self.text_label)
@@ -42,23 +45,49 @@ class DropZone(QFrame):
     
     def _apply_normal_style(self):
         """Estilo normal (sin drag encima)"""
-        self.setStyleSheet("""
-            DropZone {
-                border: 2px dashed #bdc3c7;
+        colors = self._get_theme_colors()
+        self.setStyleSheet(
+            f"""
+            DropZone {{
+                border: 2px dashed {colors['border']};
                 border-radius: 12px;
-                background-color: #f8f9fa;
-            }
-        """)
+                background-color: {colors['surface_variant']};
+            }}
+            QLabel#drop_zone_icon {{
+                font-size: 32px;
+                color: {colors['primary']};
+            }}
+            QLabel#drop_zone_text {{
+                color: {colors['text_secondary']};
+                font-size: 14px;
+            }}
+        """
+        )
     
     def _apply_dragover_style(self):
         """Estilo cuando se arrastra algo encima"""
-        self.setStyleSheet("""
-            DropZone {
-                border: 3px solid #3498db;
+        colors = self._get_theme_colors()
+        self.setStyleSheet(
+            f"""
+            DropZone {{
+                border: 3px solid {colors['primary']};
                 border-radius: 12px;
-                background-color: #e8f4fd;
-            }
-        """)
+                background-color: {colors['table_selected']};
+            }}
+            QLabel#drop_zone_icon {{
+                font-size: 32px;
+                color: {colors['primary']};
+            }}
+            QLabel#drop_zone_text {{
+                color: {colors['text_primary']};
+                font-size: 14px;
+            }}
+        """
+        )
+
+    def _get_theme_colors(self):
+        app_config = AppConfig()
+        return ThemeManager.get_theme_colors(app_config.get_theme())
     
     def dragEnterEvent(self, event):
         """Se llama cuando algo se arrastra sobre el widget"""

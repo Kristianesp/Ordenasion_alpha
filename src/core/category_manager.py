@@ -279,6 +279,46 @@ class CategoryManager:
         self.save_configuration()
         return True
 
+    def get_custom_rules(self) -> List[CategoryRule]:
+        """Retorna una copia de las reglas personalizadas actuales"""
+        return list(self.custom_rules)
+
+    def update_custom_rule(
+        self,
+        original_name: str,
+        *,
+        name: Optional[str] = None,
+        pattern: Optional[str] = None,
+        category: Optional[str] = None,
+        priority: Optional[int] = None,
+        enabled: Optional[bool] = None,
+    ) -> bool:
+        """Actualiza una regla personalizada existente"""
+        for rule in self.custom_rules:
+            if rule.name == original_name:
+                if name is not None:
+                    rule.name = name
+                if pattern is not None:
+                    rule.pattern = pattern
+                if category is not None:
+                    rule.category = category
+                if priority is not None:
+                    rule.priority = priority
+                if enabled is not None:
+                    rule.enabled = enabled
+                self.save_configuration()
+                return True
+        return False
+
+    def toggle_custom_rule(self, name: str) -> bool:
+        """Activa o desactiva una regla personalizada"""
+        for rule in self.custom_rules:
+            if rule.name == name:
+                rule.enabled = not rule.enabled
+                self.save_configuration()
+                return True
+        return False
+
     def remove_custom_rule(self, name: str) -> bool:
         """Elimina una regla personalizada"""
         for i, rule in enumerate(self.custom_rules):

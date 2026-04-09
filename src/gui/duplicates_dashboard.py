@@ -22,6 +22,7 @@ from PyQt6.QtGui import QFont, QIcon, QPixmap, QColor, QAction, QPainter
 from src.utils.constants import COLORS, UI_CONFIG
 from src.core.duplicate_finder import DuplicateFinder, DuplicateScanWorker
 from src.core.hash_manager import HashCalculationWorker
+from src.core.transaction_manager import TransactionManager
 from src.gui.table_models import VirtualizedDuplicatesModel, PaginatedDuplicatesModel
 
 
@@ -169,6 +170,7 @@ class DuplicatesDashboard(QWidget):
         self.duplicate_finder = None
         self.current_method = "fast"  # Por defecto método rápido
         self.current_folder = None
+        self.transaction_manager = TransactionManager("duplicate_operations_log.json")
         
         # 🚀 MEJORA: Variables eliminadas - ya no se usa procesamiento por lotes
         # La paginación reemplaza el sistema de lotes asíncrono
@@ -1145,40 +1147,7 @@ class DuplicatesDashboard(QWidget):
 
     def delete_selected(self):
         """🚀 MEJORA: Elimina los archivos seleccionados usando el modelo"""
-        selected_files = []
-        selected_info = []
-
-        self.log_message("🔍 Verificando archivos seleccionados...")
-
-        # Obtener filas seleccionadas del modelo
-        selected_rows = self.duplicates_model.get_checked_rows()
-        
-        for row in selected_rows:
-            row_data = self.duplicates_model.get_row_data(row)
-            
-            if not row_data:
-                continue
-            
-            try:
-                file_path = Path(row_data.get('path', ''))
-                
-                # Verificar que el archivo existe
-                if file_path.exists() and file_path.is_file():
-                    selected_files.append(file_path)
-                    
-                    size_mb = row_data.get('size', 0) / (1024 * 1024)
-                    selected_info.append({
-                        'name': file_path.name,
-                        'path': file_path,
-                        'size': f"{size_mb:.2f} MB",
-                        'location': row_data.get('location', '')
-                    })
-                else:
-                    self.log_message(f"⚠️ Archivo no encontrado: {file_path}")
-                    
-            except Exception as e:
-                self.log_message(f"❌ Error procesando fila {row}: {str(e)}")
-                continue
+        selected_files, selected_info = self._get_selected_file_entries()
 
         self.log_message(f"✅ Encontrados {len(selected_files)} archivos seleccionados")
 
@@ -1199,11 +1168,10 @@ class DuplicatesDashboard(QWidget):
 
         # Confirmar eliminación con detalles
         reply = QMessageBox.question(
-            self, "🗑️ Confirmar Eliminación",
-            f"¿Estás seguro de que quieres ELIMINAR PERMANENTEMENTE estos {len(selected_files)} archivos duplicados?\n\n"
+            self, "🗑️ Confirmar envío a papelera",
+            f"¿Quieres enviar a la papelera estos {len(selected_files)} archivos duplicados?\n\n"
             f"📂 Archivos a eliminar:\n{file_list}\n\n"
-            f"⚠️ ESTA ACCIÓN NO SE PUEDE DESHACER\n"
-            f"Los archivos se eliminarán permanentemente.",
+            f"💡 Se intentará usar la papelera del sistema. Si no está disponible, se eliminarán del disco.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
 
@@ -1216,17 +1184,13 @@ class DuplicatesDashboard(QWidget):
             
             for file_path in selected_files:
                 try:
-                    # Eliminar archivo permanentemente
-                    file_path.unlink()  # Eliminar archivo
-                    deleted_count += 1
-                    self.log_message(f"✅ Eliminado: {file_path.name}")
+                    if self.transaction_manager.safe_delete_file(file_path, use_trash=True):
+                        deleted_count += 1
+                        self.log_message(f"✅ Enviado a papelera: {file_path.name}")
+                    else:
+                        error_count += 1
+                        self.log_message(f"❌ No se pudo eliminar: {file_path.name}")
                     
-                except PermissionError:
-                    error_count += 1
-                    self.log_message(f"❌ Sin permisos para eliminar: {file_path.name}")
-                except FileNotFoundError:
-                    error_count += 1
-                    self.log_message(f"❌ Archivo ya no existe: {file_path.name}")
                 except Exception as e:
                     error_count += 1
                     self.log_message(f"❌ Error eliminando {file_path.name}: {str(e)}")
@@ -1234,7 +1198,7 @@ class DuplicatesDashboard(QWidget):
             # Mostrar resultado
             if deleted_count > 0:
                 QMessageBox.information(self, "✅ Eliminación Completada",
-                    f"✅ Eliminados correctamente: {deleted_count} archivos\n"
+                    f"✅ Procesados correctamente: {deleted_count} archivos\n"
                     f"❌ Errores: {error_count} archivos\n\n"
                     f"💡 Actualiza la vista para ver los cambios.")
                 
@@ -1254,7 +1218,60 @@ class DuplicatesDashboard(QWidget):
 
     def move_selected(self):
         """Mueve los archivos duplicados seleccionados"""
-        QMessageBox.information(self, "Información", "Función de mover implementada en próximas versiones")
+        selected_files, _ = self._get_selected_file_entries()
+        if not selected_files or not self.current_folder:
+            QMessageBox.information(self, "Información", "Selecciona archivos duplicados antes de moverlos.")
+            return
+
+        quarantine_dir = Path(self.current_folder) / ".duplicates_quarantine"
+        quarantine_dir.mkdir(parents=True, exist_ok=True)
+
+        moved_count = 0
+        for file_path in selected_files:
+            destination = quarantine_dir / file_path.name
+            counter = 1
+            while destination.exists():
+                destination = quarantine_dir / f"{file_path.stem}_{counter}{file_path.suffix}"
+                counter += 1
+            if self.transaction_manager.safe_move_file(file_path, destination):
+                moved_count += 1
+                self.log_message(f"📁 Movido a cuarentena: {file_path.name}")
+
+        if moved_count:
+            QMessageBox.information(
+                self,
+                "Cuarentena completada",
+                f"Se movieron {moved_count} archivos a {quarantine_dir}.",
+            )
+            self.populate_table()
+
+    def _get_selected_file_entries(self):
+        """Obtiene archivos seleccionados y su metadata legible."""
+        selected_files = []
+        selected_info = []
+
+        self.log_message("🔍 Verificando archivos seleccionados...")
+        for row in self.duplicates_model.get_checked_rows():
+            row_data = self.duplicates_model.get_row_data(row)
+            if not row_data:
+                continue
+            try:
+                file_path = Path(row_data.get('path', ''))
+                if file_path.exists() and file_path.is_file():
+                    selected_files.append(file_path)
+                    size_mb = row_data.get('size', 0) / (1024 * 1024)
+                    selected_info.append({
+                        'name': file_path.name,
+                        'path': file_path,
+                        'size': f"{size_mb:.2f} MB",
+                        'location': row_data.get('location', '')
+                    })
+                else:
+                    self.log_message(f"⚠️ Archivo no encontrado: {file_path}")
+            except Exception as e:
+                self.log_message(f"❌ Error procesando fila {row}: {str(e)}")
+
+        return selected_files, selected_info
 
     def show_context_menu(self, position):
         """Muestra menú contextual para previsualizar imágenes"""

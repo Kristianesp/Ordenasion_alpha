@@ -6,6 +6,7 @@ Maneja el procesamiento en segundo plano para análisis y organización
 
 import os
 import shutil
+import mimetypes
 from pathlib import Path
 from typing import List, Dict, Any
 from collections import Counter, defaultdict
@@ -84,20 +85,31 @@ class AnalysisWorker(QThread):
                     # Determinar categoría principal
                     main_category = max(category_counts.items(), key=lambda x: x[1])[0]
                     percentage = (category_counts[main_category] / total_files) * 100
+                    assigned_category = (
+                        main_category if percentage >= self.min_percentage else "VARIOS"
+                    )
                     
-                    # INCLUIR TODAS las carpetas de usuario (sin filtro de similitud)
                     movement = {
                         'folder': folder,
-                        'category': main_category,
+                        'category': assigned_category,
+                        'matched_category': main_category,
                         'total_files': total_files,
                         'size': total_size,
                         'percentage': percentage,
                         'extension': 'carpeta',
                         'category_counts': category_counts,
-                        'is_expandable': True  # Nueva propiedad para expansión
+                        'is_expandable': True,
+                        'below_similarity_threshold': percentage < self.min_percentage,
                     }
                     folder_movements.append(movement)
-                    self.progress_update.emit(f"📁 Carpeta incluida: {folder.name} ({percentage:.1f}% {main_category})")
+                    if percentage < self.min_percentage:
+                        self.progress_update.emit(
+                            f"📁 Carpeta marcada como VARIOS: {folder.name} ({percentage:.1f}% {main_category}, umbral {self.min_percentage}%)"
+                        )
+                    else:
+                        self.progress_update.emit(
+                            f"📁 Carpeta incluida: {folder.name} ({percentage:.1f}% {main_category})"
+                        )
                 else:
                     # Carpeta vacía - incluirla también
                     movement = {
@@ -137,8 +149,7 @@ class AnalysisWorker(QThread):
                             pass
                         
                         # Categorizar archivo
-                        extension = item.suffix.lower()
-                        category = self.ext_to_categoria.get(extension, "VARIOS")
+                        category = self._categorize_path(item)
                         category_counts[category] += 1
                         
                 except (PermissionError, OSError):
@@ -209,7 +220,7 @@ class AnalysisWorker(QThread):
                             pass
                         
                         extension = item.suffix.lower()
-                        category = self.ext_to_categoria.get(extension, "VARIOS")
+                        category = self._categorize_path(item)
                         
                         contents.append({
                             'type': 'file',
@@ -271,7 +282,7 @@ class AnalysisWorker(QThread):
                     file_date = file.stat().st_mtime
 
                     # Categorizar archivo
-                    category = self.ext_to_categoria.get(extension, "VARIOS")
+                    category = self._categorize_path(file)
 
                     # Análisis avanzado (si está habilitado)
                     advanced_info = {}
@@ -361,6 +372,42 @@ class AnalysisWorker(QThread):
             info['description'] = f'Error obteniendo información: {str(e)}'
 
         return info
+
+    def _categorize_path(self, file_path: Path) -> str:
+        """Categoriza usando extensión y heurísticas simples para reducir VARIOS."""
+        extension = file_path.suffix.lower()
+        category = self.ext_to_categoria.get(extension)
+        if category:
+            return category
+
+        guessed_type, _ = mimetypes.guess_type(str(file_path))
+        if guessed_type:
+            top_level_type = guessed_type.split("/", 1)[0]
+            if top_level_type == "audio":
+                return "MUSICA"
+            if top_level_type == "video":
+                return "VIDEOS"
+            if top_level_type == "image":
+                return "IMAGENES"
+            if any(
+                token in guessed_type
+                for token in ("pdf", "word", "sheet", "presentation", "json", "xml")
+            ):
+                return "DOCUMENTOS"
+
+        filename = file_path.name.lower()
+        token_map = {
+            "MUSICA": ("track", "album", "song", "mix", "audio"),
+            "VIDEOS": ("movie", "trailer", "video", "clip", "episode"),
+            "IMAGENES": ("img", "screenshot", "photo", "wallpaper", "camera"),
+            "DOCUMENTOS": ("invoice", "report", "manual", "doc", "cv", "resume", "readme"),
+            "CODIGO": ("package", "docker", "config", "script", "source", "setup"),
+        }
+        for guessed_category, tokens in token_map.items():
+            if any(token in filename for token in tokens):
+                return guessed_category
+
+        return "VARIOS"
     
     def calculate_statistics(self, folder_movements: List[Dict], file_movements: List[Dict]) -> Dict[str, Any]:
         """Calcula estadísticas generales del análisis"""
@@ -475,6 +522,11 @@ class OrganizeWorker(QThread):
                 categories.add(mov['category'])
             for mov in self.file_movements:
                 categories.add(mov['category'])
+                for candidate in self._build_destination_candidates(
+                    mov.get('file'), mov['category']
+                ):
+                    if candidate != Path(self.source_folder):
+                        categories.add(str(candidate.relative_to(Path(self.source_folder))))
             
             created_folders = []
             existing_folders = []
@@ -550,13 +602,15 @@ class OrganizeWorker(QThread):
                 category = mov['category']
                 
                 # Determinar ruta de destino
-                if category == "VARIOS":
-                    dest_path = Path(self.source_folder) / VARIOS_FOLDER / file.name
-                else:
-                    dest_path = Path(self.source_folder) / category / file.name
+                dest_path = self._resolve_file_destination(file, category)
                 
                 # Mover archivo
                 if dest_path.exists():
+                    if self.check_duplicates and self._is_duplicate_file(file, dest_path):
+                        self.progress_update.emit(
+                            f"⏭️ Duplicado omitido: {file.name} ya existe en {dest_path.parent}"
+                        )
+                        continue
                     # Si ya existe, añadir sufijo numérico
                     counter = 1
                     while dest_path.exists():
@@ -585,3 +639,43 @@ class OrganizeWorker(QThread):
     def stop(self):
         """Detiene el worker"""
         self.is_running = False
+
+    def _resolve_file_destination(self, file_path: Path, category: str) -> Path:
+        """Construye el destino final del archivo respetando organización por fecha."""
+        if category == "VARIOS":
+            base_dir = Path(self.source_folder) / VARIOS_FOLDER
+        else:
+            base_dir = Path(self.source_folder) / category
+
+        if self.organize_by_date:
+            modified = datetime.fromtimestamp(file_path.stat().st_mtime)
+            base_dir = base_dir / str(modified.year) / f"{modified.month:02d}"
+
+        base_dir.mkdir(parents=True, exist_ok=True)
+        return base_dir / file_path.name
+
+    def _build_destination_candidates(self, file_path: Path | None, category: str) -> List[Path]:
+        """Retorna carpetas potenciales de destino para pre-crear estructura."""
+        if category == "VARIOS":
+            base_dir = Path(self.source_folder) / VARIOS_FOLDER
+        else:
+            base_dir = Path(self.source_folder) / category
+        if not file_path or not self.organize_by_date:
+            return [base_dir]
+        modified = datetime.fromtimestamp(file_path.stat().st_mtime)
+        year_dir = base_dir / str(modified.year)
+        month_dir = year_dir / f"{modified.month:02d}"
+        return [base_dir, year_dir, month_dir]
+
+    def _is_duplicate_file(self, source: Path, destination: Path) -> bool:
+        """Verifica si origen y destino son archivos idénticos."""
+        if not destination.exists() or not destination.is_file():
+            return False
+        try:
+            if source.stat().st_size != destination.stat().st_size:
+                return False
+            source_hash = HashManager().calculate_file_hash(source, 'md5')
+            dest_hash = HashManager().calculate_file_hash(destination, 'md5')
+            return bool(source_hash and source_hash == dest_hash)
+        except Exception:
+            return False

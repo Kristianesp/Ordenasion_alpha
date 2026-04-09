@@ -91,7 +91,6 @@ class DiskViewer(QWidget):
         # Título simple a la izquierda
         title_label = QLabel("🖥️ INFORMACIÓN DEL SISTEMA:")
         title_label.setObjectName("system_info_title")
-        title_label.setStyleSheet("font-weight: bold; font-size: 12px;")
         unified_layout.addWidget(title_label)
         
         # Información del sistema
@@ -1042,7 +1041,10 @@ class DiskViewer(QWidget):
                 return
             
             # Cargar SMART en background usando QTimer.singleShot
-            self.basic_info_label.setText("🔄 Cargando datos SMART...")
+            if hasattr(self, "health_status_label") and self.health_status_label:
+                self.health_status_label.setText("🔄 Cargando datos SMART...")
+            if hasattr(self, "content_info_label") and self.content_info_label:
+                self.content_info_label.setText("🔄 Analizando contenido...")
             
             # Usar QTimer para ejecutar en el siguiente ciclo del event loop
             QTimer.singleShot(50, lambda: self._fetch_and_update_smart(mountpoint))
