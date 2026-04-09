@@ -260,7 +260,7 @@ class ConfigDialog(QDialog):
         exclusions_layout.addWidget(QLabel("Rutas protegidas"), 2, 0)
         self.protected_path_input = QLineEdit()
         self.protected_path_input.setPlaceholderText("/home/usuario/Documentos")
-        self.protected_path_input.returnPressed.connect(self.add_protected_path_from_input)
+        self.protected_path_input.returnPressed.connect(self.add_protected_path)
         exclusions_layout.addWidget(self.protected_path_input, 2, 1)
         self.browse_protected_path_btn = QPushButton("📂 Examinar")
         self.browse_protected_path_btn.clicked.connect(self.browse_protected_path)
@@ -277,7 +277,7 @@ class ConfigDialog(QDialog):
         exclusions_layout.addWidget(QLabel("Carpetas ignoradas"), 4, 0)
         self.ignored_path_input = QLineEdit()
         self.ignored_path_input.setPlaceholderText("/home/usuario/Descargas/tmp")
-        self.ignored_path_input.returnPressed.connect(self.add_ignored_path_from_input)
+        self.ignored_path_input.returnPressed.connect(self.add_ignored_path)
         exclusions_layout.addWidget(self.ignored_path_input, 4, 1)
         self.browse_ignored_path_btn = QPushButton("📂 Examinar")
         self.browse_ignored_path_btn.clicked.connect(self.browse_ignored_path)
@@ -875,7 +875,7 @@ class ConfigDialog(QDialog):
             self._append_unique_path(self.protected_paths_list, path)
         self.protected_path_input.clear()
 
-    def add_protected_path_from_input(self):
+    def add_protected_path(self):
         self._append_unique_path(
             self.protected_paths_list, self.protected_path_input.text().strip()
         )
@@ -892,7 +892,7 @@ class ConfigDialog(QDialog):
             self._append_unique_path(self.ignored_paths_list, path)
         self.ignored_path_input.clear()
 
-    def add_ignored_path_from_input(self):
+    def add_ignored_path(self):
         self._append_unique_path(
             self.ignored_paths_list, self.ignored_path_input.text().strip()
         )
