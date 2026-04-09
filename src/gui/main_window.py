@@ -166,8 +166,8 @@ class FileOrganizerGUI(QMainWindow):
     def init_ui(self):
         """Interfaz profesional reestructurada - Tabs con Log dedicado"""
         self.setWindowTitle(UI_CONFIG["WINDOW_TITLE"])
-        self.setGeometry(100, 100, 1350, 800)
-        self.setMinimumSize(1150, 650)
+        self.setGeometry(100, 100, 1280, 760)
+        self.setMinimumSize(800, 550)
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -215,75 +215,56 @@ class FileOrganizerGUI(QMainWindow):
         source_layout.setContentsMargins(16, 20, 16, 16)
         source_layout.setSpacing(10)
 
-        profile_row = QHBoxLayout()
-        profile_row.setSpacing(8)
-        profile_row.addWidget(QLabel("🧩 Perfil:"))
-        self.profile_combo = QComboBox()
-        self.profile_combo.setFixedHeight(34)
-        self.profile_combo.setMinimumWidth(240)
-        self.profile_combo.addItems(self.profile_manager.get_profile_names())
-        profile_row.addWidget(self.profile_combo)
-        self.load_profile_btn = QPushButton("📥 Cargar")
-        self.load_profile_btn.setFixedHeight(34)
-        self.load_profile_btn.clicked.connect(self.load_selected_profile)
-        profile_row.addWidget(self.load_profile_btn)
-        self.save_profile_btn = QPushButton("💾 Guardar perfil")
-        self.save_profile_btn.setFixedHeight(34)
-        self.save_profile_btn.clicked.connect(self.save_current_profile)
-        profile_row.addWidget(self.save_profile_btn)
-        profile_row.addStretch()
-        source_layout.addLayout(profile_row)
+        source_header = QHBoxLayout()
+        source_header.setSpacing(12)
+        source_summary = QLabel(
+            "Modo básico para organizar rápido. Activa el modo avanzado para perfiles, duplicados y exclusiones."
+        )
+        source_summary.setWordWrap(True)
+        source_header.addWidget(source_summary, 1)
+        self.advanced_mode_toggle = QPushButton("⚙️ Mostrar avanzado")
+        self.advanced_mode_toggle.setCheckable(True)
+        self.advanced_mode_toggle.setFixedHeight(34)
+        self.advanced_mode_toggle.toggled.connect(self.on_advanced_mode_toggled)
+        source_header.addWidget(self.advanced_mode_toggle)
+        source_layout.addLayout(source_header)
 
-        memory_row = QHBoxLayout()
-        memory_row.setSpacing(8)
-        memory_row.addWidget(QLabel("⭐ Rutas guardadas:"))
+        path_row = QHBoxLayout()
+        path_row.setSpacing(8)
         self.path_memory_combo = QComboBox()
         self.path_memory_combo.setFixedHeight(34)
-        self.path_memory_combo.setMinimumWidth(320)
-        memory_row.addWidget(self.path_memory_combo, 1)
-        self.use_saved_path_btn = QPushButton("Usar")
-        self.use_saved_path_btn.setFixedHeight(34)
-        self.use_saved_path_btn.clicked.connect(self.use_selected_saved_path)
-        memory_row.addWidget(self.use_saved_path_btn)
-        self.add_favorite_btn = QPushButton("⭐ Favorito")
-        self.add_favorite_btn.setFixedHeight(34)
-        self.add_favorite_btn.clicked.connect(self.add_current_path_to_favorites)
-        memory_row.addWidget(self.add_favorite_btn)
-        self.remove_favorite_btn = QPushButton("🗑️ Quitar")
-        self.remove_favorite_btn.setFixedHeight(34)
-        self.remove_favorite_btn.clicked.connect(self.remove_selected_favorite)
-        memory_row.addWidget(self.remove_favorite_btn)
-        source_layout.addLayout(memory_row)
-
-        # Fila 1: Input + Examinar
-        input_row = QHBoxLayout()
-        input_row.setSpacing(10)
+        self.path_memory_combo.setMinimumWidth(220)
+        self.path_memory_combo.textActivated.connect(lambda _text: self.use_selected_saved_path())
+        path_row.addWidget(self.path_memory_combo)
         self.folder_input = QLineEdit()
         self.folder_input.setPlaceholderText(
             "Escribe la ruta de la carpeta o arrastra aquí..."
         )
         self.folder_input.setFixedHeight(38)
-        self.folder_input.setMinimumWidth(200)
+        self.folder_input.setMinimumWidth(220)
         self.folder_input.textChanged.connect(self.on_folder_path_changed)
-        input_row.addWidget(self.folder_input, 1)
+        self.folder_input.textChanged.connect(
+            lambda _text: self.update_favorite_button_state()
+        )
+        path_row.addWidget(self.folder_input, 1)
         self.browse_btn = QPushButton("📂 Examinar")
         self.browse_btn.setFixedHeight(36)
-        self.browse_btn.setMinimumWidth(100)
+        self.browse_btn.setMinimumWidth(110)
         self.browse_btn.clicked.connect(self.browse_folder)
-        input_row.addWidget(self.browse_btn)
-        source_layout.addLayout(input_row)
+        path_row.addWidget(self.browse_btn)
+        self.add_favorite_btn = QPushButton("⭐")
+        self.add_favorite_btn.setFixedHeight(34)
+        self.add_favorite_btn.setFixedWidth(44)
+        self.add_favorite_btn.clicked.connect(self.add_current_path_to_favorites)
+        path_row.addWidget(self.add_favorite_btn)
+        source_layout.addLayout(path_row)
 
-        # Fila 2: Opciones horizontales
         opts_row = QHBoxLayout()
         opts_row.setSpacing(16)
 
         self.move_folders_checkbox = QCheckBox("Mover carpetas completas")
         self.move_folders_checkbox.setChecked(True)
         opts_row.addWidget(self.move_folders_checkbox)
-
-        self.check_duplicates_checkbox = QCheckBox("Buscar duplicados")
-        self.check_duplicates_checkbox.setChecked(True)
-        opts_row.addWidget(self.check_duplicates_checkbox)
 
         self.organize_by_date_checkbox = QCheckBox("Organizar por fecha")
         opts_row.addWidget(self.organize_by_date_checkbox)
@@ -321,29 +302,43 @@ class FileOrganizerGUI(QMainWindow):
 
         source_layout.addLayout(opts_row)
 
-        exclusions_row = QHBoxLayout()
-        exclusions_row.setSpacing(8)
-        exclusions_row.addWidget(QLabel("🚫 Extensiones:"))
-        self.ignored_extensions_input = QLineEdit()
-        self.ignored_extensions_input.setPlaceholderText(".tmp,.log,.bak")
-        exclusions_row.addWidget(self.ignored_extensions_input, 1)
-        exclusions_row.addWidget(QLabel("🛡️ Rutas protegidas:"))
-        self.protected_paths_input = QLineEdit()
-        self.protected_paths_input.setPlaceholderText("separa con ;")
-        exclusions_row.addWidget(self.protected_paths_input, 1)
-        source_layout.addLayout(exclusions_row)
+        self.advanced_controls = QWidget()
+        advanced_layout = QVBoxLayout(self.advanced_controls)
+        advanced_layout.setContentsMargins(0, 0, 0, 0)
+        advanced_layout.setSpacing(8)
 
-        ignored_paths_row = QHBoxLayout()
-        ignored_paths_row.setSpacing(8)
-        ignored_paths_row.addWidget(QLabel("🚫 Carpetas ignoradas:"))
-        self.ignored_paths_input = QLineEdit()
-        self.ignored_paths_input.setPlaceholderText("separa con ;")
-        ignored_paths_row.addWidget(self.ignored_paths_input, 1)
-        self.add_ignored_path_btn = QPushButton("➕ Ruta")
-        self.add_ignored_path_btn.setFixedHeight(34)
-        self.add_ignored_path_btn.clicked.connect(self.add_ignored_path)
-        ignored_paths_row.addWidget(self.add_ignored_path_btn)
-        source_layout.addLayout(ignored_paths_row)
+        profile_row = QHBoxLayout()
+        profile_row.setSpacing(8)
+        profile_row.addWidget(QLabel("🧩 Perfil:"))
+        self.profile_combo = QComboBox()
+        self.profile_combo.setFixedHeight(34)
+        self.profile_combo.setMinimumWidth(240)
+        self.profile_combo.addItems(self.profile_manager.get_profile_names())
+        profile_row.addWidget(self.profile_combo)
+        self.load_profile_btn = QPushButton("📥 Cargar")
+        self.load_profile_btn.setFixedHeight(34)
+        self.load_profile_btn.clicked.connect(self.load_selected_profile)
+        profile_row.addWidget(self.load_profile_btn)
+        self.save_profile_btn = QPushButton("💾 Guardar perfil")
+        self.save_profile_btn.setFixedHeight(34)
+        self.save_profile_btn.clicked.connect(self.save_current_profile)
+        profile_row.addWidget(self.save_profile_btn)
+        profile_row.addStretch()
+        advanced_layout.addLayout(profile_row)
+
+        advanced_row = QHBoxLayout()
+        advanced_row.setSpacing(8)
+        self.check_duplicates_checkbox = QCheckBox("Buscar duplicados")
+        self.check_duplicates_checkbox.setChecked(True)
+        advanced_row.addWidget(self.check_duplicates_checkbox)
+        self.manage_exclusions_btn = QPushButton("⚙️ Gestionar exclusiones")
+        self.manage_exclusions_btn.setFixedHeight(34)
+        self.manage_exclusions_btn.clicked.connect(self.open_exclusions_configuration)
+        advanced_row.addWidget(self.manage_exclusions_btn)
+        advanced_row.addStretch()
+        advanced_layout.addLayout(advanced_row)
+        self.advanced_controls.setVisible(False)
+        source_layout.addWidget(self.advanced_controls)
 
         ol.addWidget(source_group)
 
@@ -352,39 +347,15 @@ class FileOrganizerGUI(QMainWindow):
             self,
         )
         self.filter_bar.filter_changed.connect(self._on_filter_changed)
+        self.filter_bar.select_all_requested.connect(self.select_all_items)
+        self.filter_bar.deselect_all_requested.connect(self.deselect_all_items)
+        self.filter_bar.embed_selection_bar()
+        self.select_all_btn = self.filter_bar.select_all_btn
+        self.deselect_all_btn = self.filter_bar.deselect_all_btn
+        self.selection_count_label = self.filter_bar.selection_count_label
+        self.total_size_label = self.filter_bar.total_size_label
+        self.total_files_label = self.filter_bar.total_files_label
         ol.addWidget(self.filter_bar)
-
-        # Barra de selección compacta sobre la tabla
-        sel_bar = QHBoxLayout()
-        sel_bar.setContentsMargins(0, 0, 0, 0)
-        sel_bar.setSpacing(6)
-
-        self.select_all_btn = QPushButton("Todo")
-        self.select_all_btn.setFixedHeight(30)
-        self.select_all_btn.setToolTip("Seleccionar todo")
-        self.select_all_btn.clicked.connect(self.select_all_items)
-        sel_bar.addWidget(self.select_all_btn)
-
-        self.deselect_all_btn = QPushButton("Nada")
-        self.deselect_all_btn.setFixedHeight(30)
-        self.deselect_all_btn.setToolTip("Deseleccionar todo")
-        self.deselect_all_btn.clicked.connect(self.deselect_all_items)
-        sel_bar.addWidget(self.deselect_all_btn)
-
-        sel_bar.addWidget(QLabel("│"))
-
-        self.selection_count_label = QLabel("0/0 sel.")
-        self.selection_count_label.setMinimumWidth(60)
-        sel_bar.addWidget(self.selection_count_label)
-
-        self.total_size_label = QLabel("💾 0 B")
-        sel_bar.addWidget(self.total_size_label)
-
-        self.total_files_label = QLabel("📄 0 arch.")
-        sel_bar.addWidget(self.total_files_label)
-
-        sel_bar.addStretch()
-        ol.addLayout(sel_bar)
 
         # TABLA PRINCIPAL
         self.movements_table = QTableView()
@@ -530,6 +501,25 @@ class FileOrganizerGUI(QMainWindow):
         self.log_panel = None  # Ya no existe el panel colapsable
 
         self.log_message("🚀 Interfaz profesional reestructurada lista")
+
+    def on_advanced_mode_toggled(self, checked: bool):
+        """Muestra u oculta las opciones avanzadas y persiste el estado."""
+        self.advanced_controls.setVisible(checked)
+        self.advanced_mode_toggle.setText(
+            "⚙️ Ocultar avanzado" if checked else "⚙️ Mostrar avanzado"
+        )
+        self.app_config.set_ui_advanced_mode(checked)
+
+    def update_favorite_button_state(self):
+        """Actualiza el estado visual del botón de favorito."""
+        path = self.folder_input.text().strip()
+        is_favorite = path in self.app_config.get_favorite_paths()
+        self.add_favorite_btn.setText("⭐" if not is_favorite else "★")
+        self.add_favorite_btn.setToolTip(
+            "Guardar ruta actual en favoritos"
+            if not is_favorite
+            else "Quitar ruta actual de favoritos"
+        )
 
     def create_log_widget(self, layout):
         """Crea el widget de log con funcionalidad de exportar"""
@@ -925,9 +915,6 @@ class FileOrganizerGUI(QMainWindow):
             # Log
             self.app_config.set_min_similarity(self.similarity_spinbox.value())
             self.app_config.set_min_file_size_mb(self.min_size_spinbox.value())
-            self.app_config.set_ignored_extensions(self._parse_csv_extensions())
-            self.app_config.set_ignored_paths(self._parse_semicolon_paths(self.ignored_paths_input.text()))
-            self.app_config.set_protected_paths(self._parse_semicolon_paths(self.protected_paths_input.text()))
             self.app_config.push_recent_path(folder_path)
             self.refresh_saved_paths()
             self.log_message(f"🔍 Iniciando análisis de: {folder_path}")
@@ -940,8 +927,8 @@ class FileOrganizerGUI(QMainWindow):
                 self.category_manager.ext_to_categoria,
                 self.similarity_spinbox.value(),
                 min_file_size_mb=self.min_size_spinbox.value(),
-                ignored_extensions=self._parse_csv_extensions(),
-                ignored_paths=self._parse_semicolon_paths(self.ignored_paths_input.text()),
+                ignored_extensions=self.app_config.get_ignored_extensions(),
+                ignored_paths=self.app_config.get_ignored_paths(),
             )
 
             # Guardar referencia al worker para limpieza
@@ -1454,7 +1441,7 @@ class FileOrganizerGUI(QMainWindow):
             selected_file_movements,
             organize_by_date=self.organize_by_date_checkbox.isChecked(),
             check_duplicates=self.check_duplicates_checkbox.isChecked(),
-            protected_paths=self._parse_semicolon_paths(self.protected_paths_input.text()),
+            protected_paths=self.app_config.get_protected_paths(),
         )
 
         # Guardar referencia al worker para limpieza
@@ -1569,7 +1556,7 @@ class FileOrganizerGUI(QMainWindow):
         self.move_folders_checkbox.setChecked(profile.move_folders)
         self.similarity_spinbox.setValue(profile.similarity_threshold)
         self.organize_by_date_checkbox.setChecked(profile.organize_by_date)
-        self.protected_paths_input.setText(";".join(profile.exclude_patterns))
+        self.app_config.set_protected_paths(profile.exclude_patterns)
         self.log_message(f"🧩 Perfil cargado: {profile.name}")
 
     def save_current_profile(self):
@@ -1598,7 +1585,7 @@ class FileOrganizerGUI(QMainWindow):
         profile.move_folders = self.move_folders_checkbox.isChecked()
         profile.similarity_threshold = self.similarity_spinbox.value()
         profile.organize_by_date = self.organize_by_date_checkbox.isChecked()
-        profile.exclude_patterns = self._parse_semicolon_paths(self.protected_paths_input.text())
+        profile.exclude_patterns = self.app_config.get_protected_paths()
         profile.selected_categories = sorted(
             {
                 row_data.get("category")
@@ -1612,9 +1599,14 @@ class FileOrganizerGUI(QMainWindow):
         self.profile_combo.setCurrentText(profile.name)
         self.log_message(f"💾 Perfil guardado: {profile.name}")
 
-    def open_configuration(self):
+    def open_configuration(self, focus_section: str | None = None):
         """Abre la ventana de configuración"""
-        dialog = ConfigDialog(self, self.category_manager)
+        dialog = ConfigDialog(
+            self,
+            self.category_manager,
+            app_config_ref=self.app_config,
+            focus_section=focus_section,
+        )
 
         # Aplicar tema actual al diálogo
         self.apply_theme_to_dialog_simple(dialog)
@@ -1645,9 +1637,12 @@ class FileOrganizerGUI(QMainWindow):
             font_size = self.app_config.get_font_size()
             self.similarity_spinbox.setValue(self.app_config.get_min_similarity())
             self.min_size_spinbox.setValue(self.app_config.get_min_file_size_mb())
-            self.ignored_extensions_input.setText(",".join(self.app_config.get_ignored_extensions()))
-            self.ignored_paths_input.setText(";".join(self.app_config.get_ignored_paths()))
-            self.protected_paths_input.setText(";".join(self.app_config.get_protected_paths()))
+            advanced_mode = self.app_config.get_ui_advanced_mode()
+            self.advanced_mode_toggle.blockSignals(True)
+            self.advanced_mode_toggle.setChecked(advanced_mode)
+            self.advanced_mode_toggle.blockSignals(False)
+            self.on_advanced_mode_toggled(advanced_mode)
+            self.update_favorite_button_state()
 
             # Aplicar tema y fuente JUNTOS en una sola operación
             self.apply_theme_and_font_together(theme, font_size)
@@ -1660,11 +1655,7 @@ class FileOrganizerGUI(QMainWindow):
             self.log_message(f"⚠️ Error aplicando configuración guardada: {str(e)}")
 
     def _parse_csv_extensions(self) -> List[str]:
-        return [
-            item.strip()
-            for item in self.ignored_extensions_input.text().split(",")
-            if item.strip()
-        ]
+        return self.app_config.get_ignored_extensions()
 
     def _parse_semicolon_paths(self, value: str) -> List[str]:
         return [item.strip() for item in value.split(";") if item.strip()]
@@ -1684,6 +1675,9 @@ class FileOrganizerGUI(QMainWindow):
         index = self.path_memory_combo.findData(current)
         if index >= 0:
             self.path_memory_combo.setCurrentIndex(index)
+        elif self.path_memory_combo.count() > 0:
+            self.path_memory_combo.setCurrentIndex(0)
+        self.update_favorite_button_state()
 
     def use_selected_saved_path(self):
         """Carga una ruta guardada en el campo principal."""
@@ -1692,13 +1686,17 @@ class FileOrganizerGUI(QMainWindow):
             self.folder_input.setText(path)
 
     def add_current_path_to_favorites(self):
-        """Añade la ruta actual a favoritos."""
+        """Añade o quita la ruta actual de favoritos."""
         path = self.folder_input.text().strip()
         if not path:
             return
-        self.app_config.add_favorite_path(path)
+        if path in self.app_config.get_favorite_paths():
+            self.app_config.remove_favorite_path(path)
+            self.log_message(f"🗑️ Ruta eliminada de favoritos: {path}")
+        else:
+            self.app_config.add_favorite_path(path)
+            self.log_message(f"⭐ Ruta añadida a favoritos: {path}")
         self.refresh_saved_paths()
-        self.log_message(f"⭐ Ruta añadida a favoritos: {path}")
 
     def remove_selected_favorite(self):
         """Elimina la ruta seleccionada de favoritos."""
@@ -1711,13 +1709,11 @@ class FileOrganizerGUI(QMainWindow):
 
     def add_ignored_path(self):
         """Añade una carpeta a la lista de exclusiones."""
-        folder_path = QFileDialog.getExistingDirectory(self, "Seleccionar carpeta ignorada")
-        if not folder_path:
-            return
-        current_paths = self._parse_semicolon_paths(self.ignored_paths_input.text())
-        if folder_path not in current_paths:
-            current_paths.append(folder_path)
-        self.ignored_paths_input.setText(";".join(current_paths))
+        self.open_exclusions_configuration()
+
+    def open_exclusions_configuration(self):
+        """Abre la configuración enfocada en la sección de exclusiones."""
+        self.open_configuration("exclusions")
 
     def open_task_center(self):
         """Abre el centro de tareas."""

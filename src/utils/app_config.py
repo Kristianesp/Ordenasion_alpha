@@ -16,7 +16,8 @@ class AppConfig:
     DEFAULT_CONFIG = {
         "interface": {
             "font_size": 14,
-            "theme": "🌞 Claro Elegante"  # Tema por defecto (nombre unificado con themes.py)
+            "theme": "🌞 Claro Elegante",  # Tema por defecto (nombre unificado con themes.py)
+            "ui_advanced_mode": False,
         },
         "categories": {
             "auto_save": True,
@@ -182,6 +183,14 @@ class AppConfig:
     def set_theme(self, theme: str) -> bool:
         """Establece el tema"""
         return self.set("interface.theme", theme)
+
+    def get_ui_advanced_mode(self) -> bool:
+        """Indica si la UI debe abrirse en modo avanzado."""
+        return bool(self.get("interface.ui_advanced_mode", False))
+
+    def set_ui_advanced_mode(self, enabled: bool) -> bool:
+        """Persistencia del modo básico/avanzado."""
+        return self.set("interface.ui_advanced_mode", bool(enabled))
     
     def get_min_similarity(self) -> int:
         """Obtiene el porcentaje mínimo de similitud"""

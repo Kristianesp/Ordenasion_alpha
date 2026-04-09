@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QInputDialog, QMessageBox, QDialogButtonBox, QFileDialog,
     QTextEdit, QSpinBox, QCheckBox, QComboBox, QWidget
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont, QIcon, QPalette, QColor
 
 from src.utils.constants import COLORS, DIALOG_STYLES
@@ -29,23 +29,37 @@ class ConfigDialog(QDialog):
     categories_updated = pyqtSignal()
     interface_changes_requested = pyqtSignal(int, str)  # font_size, theme
     
-    def __init__(self, parent=None, category_manager: CategoryManager = None):
+    def __init__(
+        self,
+        parent=None,
+        category_manager: CategoryManager = None,
+        app_config_ref=None,
+        focus_section: str | None = None,
+    ):
         super().__init__(parent)
         self.category_manager = category_manager or CategoryManager()
+        self.app_config = app_config_ref or self._build_app_config()
+        self.focus_section = focus_section
         self.init_ui()
         # Cargar tema actual en el combo box
         self._load_current_theme()
         self.refresh_categories_list()
+        self.load_exclusions()
         self.update_stats()
         # Aplicar tema inicial
         self.apply_current_theme_to_self()
+        if self.focus_section == "exclusions":
+            QTimer.singleShot(0, self.focus_exclusions_section)
+
+    def _build_app_config(self):
+        from src.utils.app_config import AppConfig
+
+        return AppConfig()
     
     def _load_current_theme(self):
         """Carga el tema actual en el combo box"""
         try:
-            from src.utils.app_config import AppConfig
-            app_config = AppConfig()
-            current_theme = app_config.get_theme()
+            current_theme = self.app_config.get_theme()
             if hasattr(self, 'theme_combo') and self.theme_combo:
                 # Buscar el índice del tema actual
                 for i in range(self.theme_combo.count()):
@@ -58,7 +72,7 @@ class ConfigDialog(QDialog):
     def init_ui(self):
         """Inicializa la interfaz del diálogo"""
         self.setWindowTitle("⚙️ Configuración de Categorías")
-        self.setGeometry(300, 200, 700, 600)
+        self.setGeometry(280, 160, 860, 760)
         self.setModal(True)
         # Los estilos se aplican automáticamente via themes.py
         
@@ -219,6 +233,61 @@ class ConfigDialog(QDialog):
         main_layout.addLayout(left_column, 1)
         main_layout.addLayout(right_column, 1)
         layout.addLayout(main_layout)
+
+        exclusions_group = QGroupBox("🚫 Exclusiones")
+        exclusions_group.setToolTip(
+            "🚫 Gestiona extensiones ignoradas, rutas protegidas y carpetas excluidas"
+        )
+        self.exclusions_group = exclusions_group
+        exclusions_layout = QGridLayout(exclusions_group)
+
+        exclusions_layout.addWidget(QLabel("Extensiones ignoradas"), 0, 0)
+        self.ignored_extension_input = QLineEdit()
+        self.ignored_extension_input.setPlaceholderText(".tmp")
+        exclusions_layout.addWidget(self.ignored_extension_input, 0, 1)
+        self.add_ignored_extension_btn = QPushButton("➕ Añadir")
+        self.add_ignored_extension_btn.clicked.connect(self.add_ignored_extension)
+        exclusions_layout.addWidget(self.add_ignored_extension_btn, 0, 2)
+        self.ignored_extensions_list = QListWidget()
+        self.ignored_extensions_list.setMinimumHeight(100)
+        exclusions_layout.addWidget(self.ignored_extensions_list, 1, 0, 1, 2)
+        self.remove_ignored_extension_btn = QPushButton("🗑️ Eliminar")
+        self.remove_ignored_extension_btn.clicked.connect(
+            self.remove_selected_ignored_extension
+        )
+        exclusions_layout.addWidget(self.remove_ignored_extension_btn, 1, 2)
+
+        exclusions_layout.addWidget(QLabel("Rutas protegidas"), 2, 0)
+        self.protected_path_input = QLineEdit()
+        self.protected_path_input.setPlaceholderText("Añade una ruta protegida")
+        exclusions_layout.addWidget(self.protected_path_input, 2, 1)
+        self.browse_protected_path_btn = QPushButton("📂 Examinar")
+        self.browse_protected_path_btn.clicked.connect(self.browse_protected_path)
+        exclusions_layout.addWidget(self.browse_protected_path_btn, 2, 2)
+        self.protected_paths_list = QListWidget()
+        self.protected_paths_list.setMinimumHeight(100)
+        exclusions_layout.addWidget(self.protected_paths_list, 3, 0, 1, 2)
+        self.remove_protected_path_btn = QPushButton("🗑️ Eliminar")
+        self.remove_protected_path_btn.clicked.connect(
+            self.remove_selected_protected_path
+        )
+        exclusions_layout.addWidget(self.remove_protected_path_btn, 3, 2)
+
+        exclusions_layout.addWidget(QLabel("Carpetas ignoradas"), 4, 0)
+        self.ignored_path_input = QLineEdit()
+        self.ignored_path_input.setPlaceholderText("Añade una carpeta a ignorar")
+        exclusions_layout.addWidget(self.ignored_path_input, 4, 1)
+        self.browse_ignored_path_btn = QPushButton("📂 Examinar")
+        self.browse_ignored_path_btn.clicked.connect(self.browse_ignored_path)
+        exclusions_layout.addWidget(self.browse_ignored_path_btn, 4, 2)
+        self.ignored_paths_list = QListWidget()
+        self.ignored_paths_list.setMinimumHeight(100)
+        exclusions_layout.addWidget(self.ignored_paths_list, 5, 0, 1, 2)
+        self.remove_ignored_path_btn = QPushButton("🗑️ Eliminar")
+        self.remove_ignored_path_btn.clicked.connect(self.remove_selected_ignored_path)
+        exclusions_layout.addWidget(self.remove_ignored_path_btn, 5, 2)
+
+        layout.addWidget(exclusions_group)
         
         # Botones de diálogo
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
@@ -247,9 +316,7 @@ class ConfigDialog(QDialog):
         
         # Obtener colores del tema actual (no hardcodeados)
         from src.utils.themes import ThemeManager
-        from src.utils.app_config import AppConfig
-        app_config = AppConfig()
-        theme = app_config.get_theme()
+        theme = self.app_config.get_theme()
         colors = ThemeManager.get_theme_colors(theme)
         
         # Obtener categorías del gestor
@@ -290,9 +357,7 @@ class ConfigDialog(QDialog):
         
         # Obtener colores del tema actual
         from src.utils.themes import ThemeManager
-        from src.utils.app_config import AppConfig
-        app_config = AppConfig()
-        theme = app_config.get_theme()
+        theme = self.app_config.get_theme()
         colors = ThemeManager.get_theme_colors(theme)
         
         extensions = self.category_manager.get_extensions_for_category(category_name)
@@ -456,6 +521,7 @@ class ConfigDialog(QDialog):
     
     def accept(self):
         """Maneja la aceptación del diálogo"""
+        self.save_exclusions()
         # Guardar configuración
         if self.category_manager.save_configuration():
             self.categories_updated.emit()
@@ -495,10 +561,8 @@ class ConfigDialog(QDialog):
             theme_text = self.theme_combo.currentText()
             
             # Guardar configuración PRIMERO
-            from src.utils.app_config import AppConfig
-            app_config = AppConfig()
-            app_config.set_font_size(font_size)
-            app_config.set_theme(theme_text)
+            self.app_config.set_font_size(font_size)
+            self.app_config.set_theme(theme_text)
             
             # Emitir señal para aplicar cambios INMEDIATAMENTE
             self.interface_changes_requested.emit(font_size, theme_text)
@@ -562,13 +626,11 @@ class ConfigDialog(QDialog):
     def apply_current_theme_to_self(self):
         """Aplica el tema actual a este mismo diálogo usando el sistema mejorado"""
         try:
-            from src.utils.app_config import AppConfig
             from src.utils.themes import ThemeManager
             from PyQt6.QtWidgets import QWidget, QGroupBox, QComboBox, QPushButton, QLabel
             
-            app_config = AppConfig()
-            theme = app_config.get_theme()
-            font_size = app_config.get_font_size()
+            theme = self.app_config.get_theme()
+            font_size = self.app_config.get_font_size()
             
             # Obtener colores del tema
             colors = ThemeManager.get_theme_colors(theme)
@@ -718,11 +780,9 @@ class ConfigDialog(QDialog):
         """Método de respaldo para aplicar tema"""
         try:
             from src.utils.themes import ThemeManager
-            from src.utils.app_config import AppConfig
             
-            app_config = AppConfig()
-            theme = app_config.get_theme()
-            font_size = app_config.get_font_size()
+            theme = self.app_config.get_theme()
+            font_size = self.app_config.get_font_size()
             
             # Aplicar paleta y estilos
             palette = ThemeManager.apply_theme_to_palette(theme)
@@ -750,3 +810,85 @@ class ConfigDialog(QDialog):
         except Exception as e:
             from src.utils.logger import error
             error(f"Error en método de respaldo: {e}")
+
+    def focus_exclusions_section(self):
+        """Lleva el foco inicial a la gestión de exclusiones."""
+        self.ignored_extension_input.setFocus()
+
+    def _list_values(self, widget: QListWidget) -> List[str]:
+        return [widget.item(i).text() for i in range(widget.count())]
+
+    def _set_list_values(self, widget: QListWidget, values: List[str]):
+        widget.clear()
+        for value in values:
+            widget.addItem(value)
+
+    def load_exclusions(self):
+        """Carga exclusiones persistidas en la UI."""
+        self._set_list_values(
+            self.ignored_extensions_list, self.app_config.get_ignored_extensions()
+        )
+        self._set_list_values(
+            self.protected_paths_list, self.app_config.get_protected_paths()
+        )
+        self._set_list_values(
+            self.ignored_paths_list, self.app_config.get_ignored_paths()
+        )
+
+    def save_exclusions(self):
+        """Guarda exclusiones persistentes."""
+        self.app_config.set_ignored_extensions(
+            self._list_values(self.ignored_extensions_list)
+        )
+        self.app_config.set_protected_paths(self._list_values(self.protected_paths_list))
+        self.app_config.set_ignored_paths(self._list_values(self.ignored_paths_list))
+
+    def add_ignored_extension(self):
+        value = self.ignored_extension_input.text().strip()
+        if not value:
+            return
+        values = self._list_values(self.ignored_extensions_list)
+        if value not in values:
+            values.append(value)
+            self._set_list_values(self.ignored_extensions_list, sorted(values))
+        self.ignored_extension_input.clear()
+
+    def remove_selected_ignored_extension(self):
+        row = self.ignored_extensions_list.currentRow()
+        if row >= 0:
+            self.ignored_extensions_list.takeItem(row)
+
+    def _append_unique_path(self, widget: QListWidget, value: str):
+        value = value.strip()
+        if not value:
+            return
+        values = self._list_values(widget)
+        if value not in values:
+            values.append(value)
+            self._set_list_values(widget, values)
+
+    def browse_protected_path(self):
+        path = self.protected_path_input.text().strip()
+        if not path:
+            path = QFileDialog.getExistingDirectory(self, "Seleccionar ruta protegida")
+        if path:
+            self._append_unique_path(self.protected_paths_list, path)
+        self.protected_path_input.clear()
+
+    def remove_selected_protected_path(self):
+        row = self.protected_paths_list.currentRow()
+        if row >= 0:
+            self.protected_paths_list.takeItem(row)
+
+    def browse_ignored_path(self):
+        path = self.ignored_path_input.text().strip()
+        if not path:
+            path = QFileDialog.getExistingDirectory(self, "Seleccionar carpeta ignorada")
+        if path:
+            self._append_unique_path(self.ignored_paths_list, path)
+        self.ignored_path_input.clear()
+
+    def remove_selected_ignored_path(self):
+        row = self.ignored_paths_list.currentRow()
+        if row >= 0:
+            self.ignored_paths_list.takeItem(row)
