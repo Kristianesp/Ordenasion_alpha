@@ -1,0 +1,14 @@
+{
+  "model_name": "WDC WD40EZRZ-00WN9B0",
+  "serial_number": "WD-WCC6N1XYZ123",
+  "firmware_version": "80.00A80",
+  "smart_status": { "passed": true },
+  "ata_smart_attributes": {
+    "table": [
+      { "id": 9, "name": "Power_On_Hours", "raw": {"value": 22000} },
+      { "id": 12, "name": "Power_Cycle_Count", "raw": {"value": 980} },
+      { "id": 194, "name": "Temperature_Celsius", "raw": {"value": 29} }
+    ]
+  }
+}
+
