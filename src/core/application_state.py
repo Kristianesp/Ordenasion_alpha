@@ -115,7 +115,7 @@ class ApplicationState:
         self.app_config: Optional['AppConfig'] = None
         
         # === ESTADO DE LA APLICACIÓN ===
-        self.current_theme: str = "elegant_light"
+        self.current_theme: str = "🌞 Claro Elegante"
         self.current_font_size: int = 12
         self.current_disk: Optional[str] = None
         self.is_analysis_running: bool = False
@@ -214,8 +214,7 @@ class ApplicationState:
             self.disk_manager = None
             
             # === PASO 2: Configurar valores por defecto (sin cargar config) ===
-            # Evitar emojis que causan problemas de Unicode en Windows
-            self.current_theme = "Claro Elegante"
+            self.current_theme = "🌞 Claro Elegante"
             self.current_font_size = 12
             
             _log(f"[AppState] Valores por defecto: {self.current_theme}, {self.current_font_size}px")
@@ -236,7 +235,7 @@ class ApplicationState:
             if not hasattr(self, 'disk_manager'):
                 self.disk_manager = None
             if not hasattr(self, 'current_theme'):
-                self.current_theme = "Claro Elegante"
+                self.current_theme = "🌞 Claro Elegante"
             if not hasattr(self, 'current_font_size'):
                 self.current_font_size = 12
             

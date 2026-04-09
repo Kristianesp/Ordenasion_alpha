@@ -5,6 +5,7 @@ Interfaz completa para detectar, visualizar y gestionar archivos duplicados
 """
 
 import os
+import html
 from pathlib import Path
 from typing import Dict, List, Any
 from datetime import datetime
@@ -20,9 +21,12 @@ from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QSettings, QRect, QSize, QPoint
 from PyQt6.QtGui import QFont, QIcon, QPixmap, QColor, QAction, QPainter
 
 from src.utils.constants import COLORS, UI_CONFIG
+from src.utils.app_config import AppConfig
 from src.core.duplicate_finder import DuplicateFinder, DuplicateScanWorker
 from src.core.hash_manager import HashCalculationWorker
+from src.core.transaction_manager import TransactionManager
 from src.gui.table_models import VirtualizedDuplicatesModel, PaginatedDuplicatesModel
+from src.gui.task_center import TaskCenterDialog, task_registry
 
 
 class CheckboxDelegate(QStyledItemDelegate):
@@ -169,6 +173,11 @@ class DuplicatesDashboard(QWidget):
         self.duplicate_finder = None
         self.current_method = "fast"  # Por defecto método rápido
         self.current_folder = None
+        self.transaction_manager = TransactionManager("duplicate_operations_log.json")
+        self.app_config = AppConfig()
+        self.ignored_hashes = set(self.app_config.get_ignored_duplicate_hashes())
+        self.preferred_originals = self.app_config.get_preferred_originals()
+        self.scan_task_id = None
         
         # 🚀 MEJORA: Variables eliminadas - ya no se usa procesamiento por lotes
         # La paginación reemplaza el sistema de lotes asíncrono
@@ -372,6 +381,18 @@ class DuplicatesDashboard(QWidget):
         self.export_btn = QPushButton("💾 Exportar Resultados")
         self.export_btn.setToolTip("Exporta la lista de duplicados a un archivo CSV")
         buttons_layout.addWidget(self.export_btn)
+
+        self.ignore_group_btn = QPushButton("🙈 Ignorar Grupo")
+        self.ignore_group_btn.setToolTip("Oculta el grupo hash actual en futuros listados")
+        buttons_layout.addWidget(self.ignore_group_btn)
+
+        self.keep_selected_btn = QPushButton("🟢 Conservar Seleccionado")
+        self.keep_selected_btn.setToolTip("Marca el archivo actual como original preferido del grupo")
+        buttons_layout.addWidget(self.keep_selected_btn)
+
+        self.task_center_btn = QPushButton("🧵 Tareas")
+        self.task_center_btn.setToolTip("Abre el centro de tareas en segundo plano")
+        buttons_layout.addWidget(self.task_center_btn)
         
         # ✅ NUEVO: Botón para resetear columnas
         self.reset_columns_btn = QPushButton("📏 Resetear Columnas")
@@ -389,7 +410,16 @@ class DuplicatesDashboard(QWidget):
         checkbox_delegate = CheckboxDelegate(self.duplicates_table)
         self.duplicates_table.setItemDelegateForColumn(0, checkbox_delegate)
         
-        results_layout.addWidget(self.duplicates_table)
+        table_splitter = QSplitter(Qt.Orientation.Horizontal)
+        table_splitter.addWidget(self.duplicates_table)
+
+        self.preview_panel = QTextEdit()
+        self.preview_panel.setReadOnly(True)
+        self.preview_panel.setMinimumWidth(280)
+        self.preview_panel.setPlaceholderText("Selecciona un archivo para ver detalles y decidir cuál conservar.")
+        table_splitter.addWidget(self.preview_panel)
+        table_splitter.setSizes([950, 320])
+        results_layout.addWidget(table_splitter)
         
         # Controles de paginación
         pagination_layout = QHBoxLayout()
@@ -595,6 +625,9 @@ class DuplicatesDashboard(QWidget):
         self.delete_btn.clicked.connect(self.delete_selected)
         self.move_btn.clicked.connect(self.move_selected)
         self.export_btn.clicked.connect(self.export_results)
+        self.ignore_group_btn.clicked.connect(self.ignore_selected_group)
+        self.keep_selected_btn.clicked.connect(self.mark_selected_as_preferred_original)
+        self.task_center_btn.clicked.connect(self.open_task_center)
         self.reset_columns_btn.clicked.connect(self.reset_column_settings)  # ✅ NUEVO
 
         # Conectar filtros
@@ -608,6 +641,7 @@ class DuplicatesDashboard(QWidget):
         
         # Conectar cambios de selección para actualizar estadísticas
         self.duplicates_model.dataChanged.connect(self.on_selection_changed)
+        self.duplicates_table.clicked.connect(self.update_preview_panel_from_index)
     
     def on_selection_changed(self, top_left, bottom_right, roles):
         """Maneja cambios en la selección de checkboxes"""
@@ -755,13 +789,15 @@ class DuplicatesDashboard(QWidget):
         )
         self.scan_worker.finished.connect(self.on_scan_finished)
         self.scan_worker.error_occurred.connect(self.on_scan_error)  # ✅ Nombre correcto
-        self.scan_worker.scan_progress.connect(self.log_message)     # ✅ Añadir progreso
+        self.scan_worker.scan_progress.connect(self._handle_scan_progress)
         self.scan_worker.duplicates_found.connect(self.on_duplicates_found)
         
         # Log información de configuración
         recursive_text = "RECURSIVA (incluye subcarpetas)" if recursive_enabled else "NO RECURSIVA (solo carpeta actual)"
         self.log_message(f"🔄 Búsqueda {recursive_text}")
 
+        self.scan_task_id = f"duplicates_scan_{int(datetime.now().timestamp())}"
+        task_registry.start_task(self.scan_task_id, "Escaneo de duplicados", self.scan_worker.stop)
         self.scan_worker.start()
 
     def on_duplicates_found(self, duplicates_data, statistics):
@@ -802,6 +838,9 @@ class DuplicatesDashboard(QWidget):
         self.scan_btn.setEnabled(True)
         self.apply_scan_button_style()  # ✅ NUEVO: Reaplicar estilo azul
         self.progress_bar.setVisible(False)
+        if self.scan_task_id:
+            task_registry.finish_task(self.scan_task_id, "Completada")
+            self.scan_task_id = None
         self.log_message("✅ Escaneo completado")
 
     def on_scan_error(self, error_message):
@@ -809,6 +848,9 @@ class DuplicatesDashboard(QWidget):
         self.scan_btn.setEnabled(True)
         self.apply_scan_button_style()  # ✅ NUEVO: Reaplicar estilo azul
         self.progress_bar.setVisible(False)
+        if self.scan_task_id:
+            task_registry.finish_task(self.scan_task_id, "Error")
+            self.scan_task_id = None
         self.log_message(f"❌ Error en escaneo: {error_message}")
         QMessageBox.critical(self, "Error", f"Error durante el escaneo:\n{error_message}")
 
@@ -955,6 +997,8 @@ class DuplicatesDashboard(QWidget):
             filtered_out_files = 0
             
             for hash_value, file_paths in data_to_use.items():
+                if hash_value in self.ignored_hashes:
+                    continue
                 if len(file_paths) > 1:
                     files_info = []
                     
@@ -990,9 +1034,18 @@ class DuplicatesDashboard(QWidget):
                     if len(files_info) <= 1:
                         continue
                     
-                    # Ordenar por fecha (más reciente = original)
+                    preferred_path = self.preferred_originals.get(hash_value)
                     files_info.sort(key=lambda x: x['date'], reverse=True)
-                    files_info[0]['is_original'] = True
+                    for file_info in files_info:
+                        file_info['is_original'] = False
+                    preferred_match = next(
+                        (file_info for file_info in files_info if file_info['path'] == preferred_path),
+                        None,
+                    )
+                    if preferred_match:
+                        preferred_match['is_original'] = True
+                    else:
+                        files_info[0]['is_original'] = True
                     
                     # Agregar todos los archivos del grupo
                     model_data.extend(files_info)
@@ -1014,8 +1067,8 @@ class DuplicatesDashboard(QWidget):
             
             # ✅ CRÍTICO: Aplicar anchos de columna DESPUÉS de cargar datos
             self.apply_column_widths()
-            
             self.log_message(f"🚀 Tabla virtualizada lista - Mostrando página 1 de {self.duplicates_model.get_page_info()['total_pages']}")
+            self.preview_panel.setPlainText("Selecciona un archivo para ver detalles del grupo.")
             
         except Exception as e:
             self.log_message(f"❌ Error en populate_table: {str(e)}")
@@ -1145,40 +1198,7 @@ class DuplicatesDashboard(QWidget):
 
     def delete_selected(self):
         """🚀 MEJORA: Elimina los archivos seleccionados usando el modelo"""
-        selected_files = []
-        selected_info = []
-
-        self.log_message("🔍 Verificando archivos seleccionados...")
-
-        # Obtener filas seleccionadas del modelo
-        selected_rows = self.duplicates_model.get_checked_rows()
-        
-        for row in selected_rows:
-            row_data = self.duplicates_model.get_row_data(row)
-            
-            if not row_data:
-                continue
-            
-            try:
-                file_path = Path(row_data.get('path', ''))
-                
-                # Verificar que el archivo existe
-                if file_path.exists() and file_path.is_file():
-                    selected_files.append(file_path)
-                    
-                    size_mb = row_data.get('size', 0) / (1024 * 1024)
-                    selected_info.append({
-                        'name': file_path.name,
-                        'path': file_path,
-                        'size': f"{size_mb:.2f} MB",
-                        'location': row_data.get('location', '')
-                    })
-                else:
-                    self.log_message(f"⚠️ Archivo no encontrado: {file_path}")
-                    
-            except Exception as e:
-                self.log_message(f"❌ Error procesando fila {row}: {str(e)}")
-                continue
+        selected_files, selected_info = self._get_selected_file_entries()
 
         self.log_message(f"✅ Encontrados {len(selected_files)} archivos seleccionados")
 
@@ -1199,11 +1219,10 @@ class DuplicatesDashboard(QWidget):
 
         # Confirmar eliminación con detalles
         reply = QMessageBox.question(
-            self, "🗑️ Confirmar Eliminación",
-            f"¿Estás seguro de que quieres ELIMINAR PERMANENTEMENTE estos {len(selected_files)} archivos duplicados?\n\n"
+            self, "🗑️ Confirmar envío a papelera",
+            f"¿Quieres enviar a la papelera estos {len(selected_files)} archivos duplicados?\n\n"
             f"📂 Archivos a eliminar:\n{file_list}\n\n"
-            f"⚠️ ESTA ACCIÓN NO SE PUEDE DESHACER\n"
-            f"Los archivos se eliminarán permanentemente.",
+            f"💡 Se intentará usar la papelera del sistema. Si no está disponible, se eliminarán del disco.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
 
@@ -1216,17 +1235,14 @@ class DuplicatesDashboard(QWidget):
             
             for file_path in selected_files:
                 try:
-                    # Eliminar archivo permanentemente
-                    file_path.unlink()  # Eliminar archivo
-                    deleted_count += 1
-                    self.log_message(f"✅ Eliminado: {file_path.name}")
+                    if self.transaction_manager.safe_delete_file(file_path, use_trash=True):
+                        deleted_count += 1
+                        self.log_message(f"✅ Enviado a papelera: {file_path.name}")
+                    else:
+                        error_count += 1
+                        reason = self.transaction_manager.last_error or "motivo no disponible"
+                        self.log_message(f"❌ No se pudo eliminar: {file_path.name} ({reason})")
                     
-                except PermissionError:
-                    error_count += 1
-                    self.log_message(f"❌ Sin permisos para eliminar: {file_path.name}")
-                except FileNotFoundError:
-                    error_count += 1
-                    self.log_message(f"❌ Archivo ya no existe: {file_path.name}")
                 except Exception as e:
                     error_count += 1
                     self.log_message(f"❌ Error eliminando {file_path.name}: {str(e)}")
@@ -1234,7 +1250,7 @@ class DuplicatesDashboard(QWidget):
             # Mostrar resultado
             if deleted_count > 0:
                 QMessageBox.information(self, "✅ Eliminación Completada",
-                    f"✅ Eliminados correctamente: {deleted_count} archivos\n"
+                    f"✅ Procesados correctamente: {deleted_count} archivos\n"
                     f"❌ Errores: {error_count} archivos\n\n"
                     f"💡 Actualiza la vista para ver los cambios.")
                 
@@ -1254,7 +1270,60 @@ class DuplicatesDashboard(QWidget):
 
     def move_selected(self):
         """Mueve los archivos duplicados seleccionados"""
-        QMessageBox.information(self, "Información", "Función de mover implementada en próximas versiones")
+        selected_files, _ = self._get_selected_file_entries()
+        if not selected_files or not self.current_folder:
+            QMessageBox.information(self, "Información", "Selecciona archivos duplicados antes de moverlos.")
+            return
+
+        quarantine_dir = Path(self.current_folder) / ".duplicates_quarantine"
+        quarantine_dir.mkdir(parents=True, exist_ok=True)
+
+        moved_count = 0
+        for file_path in selected_files:
+            destination = quarantine_dir / file_path.name
+            counter = 1
+            while destination.exists():
+                destination = quarantine_dir / f"{file_path.stem}_{counter}{file_path.suffix}"
+                counter += 1
+            if self.transaction_manager.safe_move_file(file_path, destination):
+                moved_count += 1
+                self.log_message(f"📁 Movido a cuarentena: {file_path.name}")
+
+        if moved_count:
+            QMessageBox.information(
+                self,
+                "Cuarentena completada",
+                f"Se movieron {moved_count} archivos a {quarantine_dir}.",
+            )
+            self.populate_table()
+
+    def _get_selected_file_entries(self):
+        """Obtiene archivos seleccionados y su metadata legible."""
+        selected_files = []
+        selected_info = []
+
+        self.log_message("🔍 Verificando archivos seleccionados...")
+        for row in self.duplicates_model.get_checked_rows():
+            row_data = self.duplicates_model.get_row_data(row)
+            if not row_data:
+                continue
+            try:
+                file_path = Path(row_data.get('path', ''))
+                if file_path.exists() and file_path.is_file():
+                    selected_files.append(file_path)
+                    size_mb = row_data.get('size', 0) / (1024 * 1024)
+                    selected_info.append({
+                        'name': file_path.name,
+                        'path': file_path,
+                        'size': f"{size_mb:.2f} MB",
+                        'location': row_data.get('location', '')
+                    })
+                else:
+                    self.log_message(f"⚠️ Archivo no encontrado: {file_path}")
+            except Exception as e:
+                self.log_message(f"❌ Error procesando fila {row}: {str(e)}")
+
+        return selected_files, selected_info
 
     def show_context_menu(self, position):
         """Muestra menú contextual para previsualizar imágenes"""
@@ -1531,8 +1600,15 @@ class DuplicatesDashboard(QWidget):
             if clicked_button == delete_btn:
                 # Eliminar archivo
                 if file_path.exists():
-                    file_path.unlink()
-                    self.log_message(f"🗑️ Archivo eliminado: {file_name}")
+                    if self.transaction_manager.safe_delete_file(file_path, use_trash=True):
+                        self.log_message(f"🗑️ Archivo enviado a papelera: {file_name}")
+                    else:
+                        QMessageBox.warning(
+                            self,
+                            "Error",
+                            f"No se pudo eliminar {file_name}:\n{self.transaction_manager.last_error or 'motivo no disponible'}",
+                        )
+                        return
                     
                     # Refrescar la tabla
                     self.log_message("🔄 Refrescando vista...")
@@ -1591,10 +1667,89 @@ class DuplicatesDashboard(QWidget):
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Error al exportar: {str(e)}")
 
+    def update_preview_panel_from_index(self, index):
+        """Actualiza el panel lateral de preview/detalle."""
+        if not index.isValid():
+            return
+        row_data = self.duplicates_model.get_row_data(index.row())
+        if not row_data:
+            return
+        status = "Original preferido" if row_data.get("is_original") else "Duplicado candidato"
+        self.preview_panel.setPlainText(
+            "\n".join(
+                [
+                    f"Nombre: {row_data.get('name', 'N/A')}",
+                    f"Estado: {status}",
+                    f"Ruta: {row_data.get('path', 'N/A')}",
+                    f"Grupo hash: {row_data.get('hash', 'N/A')}",
+                    f"Tamaño: {self.format_file_size(row_data.get('size', 0))}",
+                    f"Fecha: {datetime.fromtimestamp(row_data.get('date', 0)).strftime('%Y-%m-%d %H:%M') if row_data.get('date') else 'N/A'}",
+                    "",
+                    "Acciones sugeridas:",
+                    "- Marca como original preferido si este archivo debe conservarse.",
+                    "- Ignora el grupo si es un conjunto legítimo que no quieres revisar.",
+                    "- Usa cuarentena para revisar fuera de la carpeta principal.",
+                ]
+            )
+        )
+
+    def ignore_selected_group(self):
+        """Ignora el grupo hash del archivo seleccionado."""
+        index = self.duplicates_table.currentIndex()
+        if not index.isValid():
+            return
+        row_data = self.duplicates_model.get_row_data(index.row())
+        if not row_data:
+            return
+        hash_value = row_data.get("hash")
+        if not hash_value:
+            return
+        self.ignored_hashes.add(hash_value)
+        self.app_config.set_ignored_duplicate_hashes(list(self.ignored_hashes))
+        self.log_message(f"🙈 Grupo ignorado: {hash_value}")
+        self.populate_table()
+
+    def mark_selected_as_preferred_original(self):
+        """Marca el archivo actual como original preferido del grupo."""
+        index = self.duplicates_table.currentIndex()
+        if not index.isValid():
+            return
+        row_data = self.duplicates_model.get_row_data(index.row())
+        if not row_data:
+            return
+        hash_value = row_data.get("hash")
+        path = row_data.get("path")
+        if not hash_value or not path:
+            return
+        self.preferred_originals[hash_value] = path
+        self.app_config.set_preferred_original(hash_value, path)
+        self.log_message(f"🟢 Original preferido actualizado para {hash_value}: {Path(path).name}")
+        self.populate_table()
+
+    def open_task_center(self):
+        """Abre el centro de tareas."""
+        TaskCenterDialog(self).exec()
+
+    def _handle_scan_progress(self, message: str):
+        """Sincroniza el progreso del escaneo con el centro de tareas."""
+        self.log_message(message)
+        if self.scan_task_id:
+            task_registry.update_task(self.scan_task_id, message)
+
     def log_message(self, message: str):
         """Añade un mensaje al log"""
         timestamp = datetime.now().strftime("%H:%M:%S")
-        self.log_text.append(f"[{timestamp}] {message}")
+        level_color = "#1976d2"
+        if "❌" in message or "Error" in message:
+            level_color = "#c62828"
+        elif "⚠️" in message:
+            level_color = "#ed6c02"
+        elif "✅" in message:
+            level_color = "#2e7d32"
+        self.log_text.append(
+            f"<span style='color:#888'>[{timestamp}]</span> "
+            f"<span style='color:{level_color}'>{html.escape(message)}</span>"
+        )
 
         # Hacer scroll automático al final
         cursor = self.log_text.textCursor()

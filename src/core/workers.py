@@ -6,13 +6,13 @@ Maneja el procesamiento en segundo plano para análisis y organización
 
 import os
 import shutil
+import mimetypes
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from collections import Counter, defaultdict
 from datetime import datetime
 
 from PyQt6.QtCore import QThread, pyqtSignal
-from PyQt6.QtWidgets import QMessageBox
 
 from src.utils.constants import VARIOS_FOLDER
 from .hash_manager import HashManager
@@ -27,13 +27,32 @@ class AnalysisWorker(QThread):
     analysis_complete = pyqtSignal(list, list, dict)
     error_occurred = pyqtSignal(str)
 
-    def __init__(self, folder_path: str, categories: Dict[str, List[str]], ext_to_categoria: Dict[str, str], min_percentage: int = 70, advanced_analysis: bool = True):
+    def __init__(
+        self,
+        folder_path: str,
+        categories: Dict[str, List[str]],
+        ext_to_categoria: Dict[str, str],
+        min_percentage: int = 70,
+        advanced_analysis: bool = True,
+        min_file_size_mb: int = 0,
+        ignored_extensions: Optional[List[str]] = None,
+        ignored_paths: Optional[List[str]] = None,
+    ):
         super().__init__()
         self.folder_path = folder_path
         self.categories = categories
         self.ext_to_categoria = ext_to_categoria
         self.min_percentage = min_percentage  # Porcentaje mínimo de similitud
         self.advanced_analysis = advanced_analysis  # Nuevo: análisis avanzado
+        self.min_file_size_bytes = max(0, int(min_file_size_mb)) * 1024 * 1024
+        self.ignored_extensions = {
+            ext if str(ext).startswith(".") else f".{str(ext)}"
+            for ext in (ignored_extensions or [])
+            if str(ext).strip()
+        }
+        self.ignored_paths = [
+            str(Path(path)).lower() for path in (ignored_paths or []) if str(path).strip()
+        ]
         self.hash_manager = HashManager()
         self.is_running = True
     
@@ -60,7 +79,7 @@ class AnalysisWorker(QThread):
             self.error_occurred.emit(f"❌ Error durante el análisis: {str(e)}")
     
     def analyze_folders(self) -> List[Dict[str, Any]]:
-        """Analiza las carpetas en la ruta especificada"""
+        """Analiza carpetas y las envía a VARIOS si no superan el umbral de similitud."""
         folder_movements = []
         folder_path = Path(self.folder_path)
         
@@ -73,7 +92,7 @@ class AnalysisWorker(QThread):
         for folder in folders:
             try:
                 # FILTRO INTELIGENTE: Solo excluir carpetas del sistema críticas
-                if self.is_system_folder(folder):
+                if self.is_excluded_path(folder) or self.is_system_folder(folder):
                     self.progress_update.emit(f"🚫 Excluyendo carpeta del sistema: {folder.name}")
                     continue
                 
@@ -84,20 +103,34 @@ class AnalysisWorker(QThread):
                     # Determinar categoría principal
                     main_category = max(category_counts.items(), key=lambda x: x[1])[0]
                     percentage = (category_counts[main_category] / total_files) * 100
+                    assigned_category = (
+                        main_category if percentage >= self.min_percentage else "VARIOS"
+                    )
+                    # Si la carpeta es demasiado heterogénea para el umbral elegido,
+                    # se conserva visible en resultados pero se envía a VARIOS para
+                    # evitar clasificaciones agresivas e incorrectas.
                     
-                    # INCLUIR TODAS las carpetas de usuario (sin filtro de similitud)
                     movement = {
                         'folder': folder,
-                        'category': main_category,
+                        'category': assigned_category,
+                        'matched_category': main_category,
                         'total_files': total_files,
                         'size': total_size,
                         'percentage': percentage,
                         'extension': 'carpeta',
                         'category_counts': category_counts,
-                        'is_expandable': True  # Nueva propiedad para expansión
+                        'is_expandable': True,
+                        'below_similarity_threshold': percentage < self.min_percentage,
                     }
                     folder_movements.append(movement)
-                    self.progress_update.emit(f"📁 Carpeta incluida: {folder.name} ({percentage:.1f}% {main_category})")
+                    if percentage < self.min_percentage:
+                        self.progress_update.emit(
+                            f"📁 Carpeta marcada como VARIOS: {folder.name} ({percentage:.1f}% {main_category}, umbral {self.min_percentage}%)"
+                        )
+                    else:
+                        self.progress_update.emit(
+                            f"📁 Carpeta incluida: {folder.name} ({percentage:.1f}% {main_category})"
+                        )
                 else:
                     # Carpeta vacía - incluirla también
                     movement = {
@@ -129,6 +162,8 @@ class AnalysisWorker(QThread):
             for item in folder_path.iterdir():
                 try:
                     if item.is_file():
+                        if self._should_skip_file(item):
+                            continue
                         total_files += 1
                         try:
                             total_size += item.stat().st_size
@@ -137,8 +172,7 @@ class AnalysisWorker(QThread):
                             pass
                         
                         # Categorizar archivo
-                        extension = item.suffix.lower()
-                        category = self.ext_to_categoria.get(extension, "VARIOS")
+                        category = self._categorize_path(item)
                         category_counts[category] += 1
                         
                 except (PermissionError, OSError):
@@ -201,6 +235,8 @@ class AnalysisWorker(QThread):
             for item in folder_path.iterdir():
                 try:
                     if item.is_file():
+                        if self._should_skip_file(item):
+                            continue
                         # Archivo individual
                         file_size = 0
                         try:
@@ -209,7 +245,7 @@ class AnalysisWorker(QThread):
                             pass
                         
                         extension = item.suffix.lower()
-                        category = self.ext_to_categoria.get(extension, "VARIOS")
+                        category = self._categorize_path(item)
                         
                         contents.append({
                             'type': 'file',
@@ -266,12 +302,14 @@ class AnalysisWorker(QThread):
             for file in files:
                 try:
                     # Información básica del archivo
+                    if self._should_skip_file(file):
+                        continue
                     file_size = file.stat().st_size
                     extension = file.suffix.lower()
                     file_date = file.stat().st_mtime
 
                     # Categorizar archivo
-                    category = self.ext_to_categoria.get(extension, "VARIOS")
+                    category = self._categorize_path(file)
 
                     # Análisis avanzado (si está habilitado)
                     advanced_info = {}
@@ -361,6 +399,63 @@ class AnalysisWorker(QThread):
             info['description'] = f'Error obteniendo información: {str(e)}'
 
         return info
+
+    def _categorize_path(self, file_path: Path) -> str:
+        """Categoriza con este orden: extensión, MIME, heurísticas por nombre y VARIOS."""
+        extension = file_path.suffix.lower()
+        category = self.ext_to_categoria.get(extension)
+        if category:
+            return category
+
+        guessed_type, _ = mimetypes.guess_type(str(file_path))
+        if guessed_type:
+            top_level_type = guessed_type.split("/", 1)[0]
+            if top_level_type == "audio":
+                return "MUSICA"
+            if top_level_type == "video":
+                return "VIDEOS"
+            if top_level_type == "image":
+                return "IMAGENES"
+            if any(
+                token in guessed_type
+                for token in ("pdf", "word", "sheet", "presentation", "json", "xml")
+            ):
+                return "DOCUMENTOS"
+
+        filename = file_path.name.lower()
+        token_map = {
+            "MUSICA": ("track", "album", "song", "mix", "audio"),
+            "VIDEOS": ("movie", "trailer", "video", "clip", "episode"),
+            "IMAGENES": ("img", "screenshot", "photo", "wallpaper", "camera"),
+            "DOCUMENTOS": ("invoice", "report", "manual", "doc", "cv", "resume", "readme"),
+            "CODIGO": ("package", "docker", "config", "script", "source", "setup"),
+        }
+        for guessed_category, tokens in token_map.items():
+            if any(token in filename for token in tokens):
+                return guessed_category
+
+        return "VARIOS"
+
+    def is_excluded_path(self, path: Path) -> bool:
+        """Determina si una ruta debe excluirse del análisis."""
+        normalized = str(path).lower()
+        return any(
+            normalized == ignored or normalized.startswith(f"{ignored}{os.sep}")
+            for ignored in self.ignored_paths
+        )
+
+    def _should_skip_file(self, file_path: Path) -> bool:
+        """Aplica exclusiones por ruta, extensión y tamaño mínimo."""
+        if self.is_excluded_path(file_path):
+            return True
+        if file_path.suffix.lower() in self.ignored_extensions:
+            return True
+        if self.min_file_size_bytes <= 0:
+            return False
+        try:
+            return file_path.stat().st_size < self.min_file_size_bytes
+        except OSError:
+            return True
     
     def calculate_statistics(self, folder_movements: List[Dict], file_movements: List[Dict]) -> Dict[str, Any]:
         """Calcula estadísticas generales del análisis"""
@@ -403,9 +498,17 @@ class OrganizeWorker(QThread):
     progress_update = pyqtSignal(str)
     organize_complete = pyqtSignal(bool, str)
     rollback_available = pyqtSignal(str)  # Nueva señal para indicar que hay rollback disponible
+    summary_ready = pyqtSignal(dict)
     
-    def __init__(self, source_folder: str, folder_movements: List[Dict], file_movements: List[Dict], 
-                 organize_by_date: bool = False, check_duplicates: bool = False):
+    def __init__(
+        self,
+        source_folder: str,
+        folder_movements: List[Dict],
+        file_movements: List[Dict],
+        organize_by_date: bool = False,
+        check_duplicates: bool = False,
+        protected_paths: Optional[List[str]] = None,
+    ):
         super().__init__()
         self.source_folder = source_folder
         self.folder_movements = folder_movements
@@ -415,11 +518,26 @@ class OrganizeWorker(QThread):
         self.current_transaction_id = None
         self.organize_by_date = organize_by_date
         self.check_duplicates = check_duplicates
+        self.hash_manager = HashManager()
+        self.protected_paths = [
+            str(Path(path)).lower() for path in (protected_paths or []) if str(path).strip()
+        ]
         self._moved_files = []  # Track moved files for duplicate checking
+        self.summary = {
+            "folders_moved": 0,
+            "files_moved": 0,
+            "bytes_reorganized": 0,
+            "skipped_duplicates": 0,
+            "warnings": [],
+            "errors": [],
+            "duration_seconds": 0.0,
+            "created_folders": [],
+        }
     
     def run(self):
         """Ejecuta la organización de archivos y carpetas con transacciones"""
         try:
+            started_at = datetime.now()
             # 🚀 MEJORA: Iniciar transacción
             total_items = len(self.folder_movements) + len(self.file_movements)
             self.current_transaction_id = self.transaction_manager.begin_transaction(
@@ -439,6 +557,10 @@ class OrganizeWorker(QThread):
             
             # 🚀 MEJORA: Confirmar transacción
             self.transaction_manager.commit_transaction()
+            self.summary["duration_seconds"] = (
+                datetime.now() - started_at
+            ).total_seconds()
+            self.summary_ready.emit(dict(self.summary))
             
             self.progress_update.emit("✅ Organización completada exitosamente")
             self.organize_complete.emit(True, "Organización completada exitosamente")
@@ -458,6 +580,8 @@ class OrganizeWorker(QThread):
                 else:
                     error_msg += "\n⚠️ No se pudieron revertir todos los cambios"
             
+            self.summary["errors"].append(error_msg)
+            self.summary_ready.emit(dict(self.summary))
             self.organize_complete.emit(False, error_msg)
     
     def create_destination_structure(self):
@@ -475,6 +599,16 @@ class OrganizeWorker(QThread):
                 categories.add(mov['category'])
             for mov in self.file_movements:
                 categories.add(mov['category'])
+                for candidate in self._build_destination_candidates(
+                    mov.get('file'), mov['category']
+                ):
+                    if candidate != Path(self.source_folder):
+                        try:
+                            categories.add(
+                                str(candidate.relative_to(Path(self.source_folder)))
+                            )
+                        except ValueError:
+                            continue
             
             created_folders = []
             existing_folders = []
@@ -490,6 +624,7 @@ class OrganizeWorker(QThread):
             
             # Informar sobre carpetas creadas y existentes
             if created_folders:
+                self.summary["created_folders"].extend(created_folders)
                 self.progress_update.emit(f"📁 Carpetas creadas: {', '.join(created_folders)}")
             if existing_folders:
                 self.progress_update.emit(f"📁 Carpetas existentes (reutilizadas): {', '.join(existing_folders)}")
@@ -513,6 +648,11 @@ class OrganizeWorker(QThread):
                 
                 folder = mov['folder']
                 category = mov['category']
+                if self._is_protected_path(folder):
+                    warning = f"Carpeta protegida omitida: {folder}"
+                    self.summary["warnings"].append(warning)
+                    self.progress_update.emit(f"🛡️ {warning}")
+                    continue
                 
                 # Determinar ruta de destino
                 if category == "VARIOS":
@@ -531,10 +671,14 @@ class OrganizeWorker(QThread):
                 
                 # 🚀 MEJORA: Usar safe_move_file del transaction_manager
                 if self.transaction_manager.safe_move_file(folder, dest_path):
+                    self.summary["folders_moved"] += 1
+                    self.summary["bytes_reorganized"] += mov.get('size', 0)
                     progress = f"📁 Movida carpeta: {folder.name} → {category}"
                     self.progress_update.emit(progress)
                 else:
-                    self.progress_update.emit(f"⚠️ Error moviendo carpeta: {folder.name}")
+                    error = f"Error moviendo carpeta: {folder.name}"
+                    self.summary["errors"].append(error)
+                    self.progress_update.emit(f"⚠️ {error}")
                 
         except Exception as e:
             raise Exception(f"Error moviendo carpetas: {str(e)}")
@@ -548,15 +692,23 @@ class OrganizeWorker(QThread):
                 
                 file = mov['file']
                 category = mov['category']
+                if self._is_protected_path(file):
+                    warning = f"Archivo protegido omitido: {file}"
+                    self.summary["warnings"].append(warning)
+                    self.progress_update.emit(f"🛡️ {warning}")
+                    continue
                 
                 # Determinar ruta de destino
-                if category == "VARIOS":
-                    dest_path = Path(self.source_folder) / VARIOS_FOLDER / file.name
-                else:
-                    dest_path = Path(self.source_folder) / category / file.name
+                dest_path = self._resolve_file_destination(file, category)
                 
                 # Mover archivo
                 if dest_path.exists():
+                    if self.check_duplicates and self._is_duplicate_file(file, dest_path):
+                        self.summary["skipped_duplicates"] += 1
+                        self.progress_update.emit(
+                            f"⏭️ Duplicado omitido: {file.name} ya existe en {dest_path.parent}"
+                        )
+                        continue
                     # Si ya existe, añadir sufijo numérico
                     counter = 1
                     while dest_path.exists():
@@ -575,9 +727,13 @@ class OrganizeWorker(QThread):
                 
                 # 🚀 MEJORA: Usar safe_move_file del transaction_manager
                 if self.transaction_manager.safe_move_file(file, dest_path):
+                    self.summary["files_moved"] += 1
+                    self.summary["bytes_reorganized"] += mov.get('size', 0)
                     self.progress_update.emit(progress)
                 else:
-                    self.progress_update.emit(f"⚠️ Error moviendo archivo: {file.name}")
+                    error = f"Error moviendo archivo: {file.name}"
+                    self.summary["errors"].append(error)
+                    self.progress_update.emit(f"⚠️ {error}")
                 
         except Exception as e:
             raise Exception(f"Error moviendo archivos: {str(e)}")
@@ -585,3 +741,54 @@ class OrganizeWorker(QThread):
     def stop(self):
         """Detiene el worker"""
         self.is_running = False
+
+    def _resolve_file_destination(self, file_path: Path, category: str) -> Path:
+        """Construye el destino final del archivo respetando organización por fecha."""
+        if category == "VARIOS":
+            base_dir = Path(self.source_folder) / VARIOS_FOLDER
+        else:
+            base_dir = Path(self.source_folder) / category
+
+        if self.organize_by_date:
+            modified = datetime.fromtimestamp(file_path.stat().st_mtime)
+            base_dir = base_dir / str(modified.year) / f"{modified.month:02d}"
+
+        base_dir.mkdir(parents=True, exist_ok=True)
+        return base_dir / file_path.name
+
+    def _build_destination_candidates(self, file_path: Path | None, category: str) -> List[Path]:
+        """Retorna carpetas potenciales de destino para pre-crear estructura."""
+        if category == "VARIOS":
+            base_dir = Path(self.source_folder) / VARIOS_FOLDER
+        else:
+            base_dir = Path(self.source_folder) / category
+        if not file_path or not self.organize_by_date:
+            return [base_dir]
+        modified = datetime.fromtimestamp(file_path.stat().st_mtime)
+        year_dir = base_dir / str(modified.year)
+        month_dir = year_dir / f"{modified.month:02d}"
+        return [base_dir, year_dir, month_dir]
+
+    def _is_duplicate_file(self, source: Path, destination: Path) -> bool:
+        """Verifica si origen y destino son archivos idénticos."""
+        if not destination.exists() or not destination.is_file():
+            return False
+        try:
+            if source.stat().st_size != destination.stat().st_size:
+                return False
+            source_hash = self.hash_manager.calculate_file_hash(source, 'md5')
+            dest_hash = self.hash_manager.calculate_file_hash(destination, 'md5')
+            return bool(source_hash and source_hash == dest_hash)
+        except Exception as error:
+            self.progress_update.emit(
+                f"⚠️ No se pudo verificar duplicado para {source.name}: {error}"
+            )
+            return False
+
+    def _is_protected_path(self, path: Path) -> bool:
+        """Evita mover rutas marcadas como protegidas."""
+        normalized = str(path).lower()
+        return any(
+            normalized == protected or normalized.startswith(f"{protected}{os.sep}")
+            for protected in self.protected_paths
+        )
