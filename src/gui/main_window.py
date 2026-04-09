@@ -1471,12 +1471,10 @@ class FileOrganizerGUI(QMainWindow):
         if not ok or not profile_name.strip():
             return
 
-        profile = self.profile_manager.get_profile(profile_name.strip())
+        normalized_name = profile_name.strip()
+        profile = self.profile_manager.get_profile(normalized_name)
         if profile is None:
-            try:
-                profile = self.profile_manager.create_profile(profile_name.strip())
-            except ValueError:
-                profile = self.profile_manager.get_profile(profile_name.strip())
+            profile = self.profile_manager.create_profile(normalized_name)
 
         if profile is None:
             QMessageBox.warning(self, "Error", "No se pudo crear el perfil.")

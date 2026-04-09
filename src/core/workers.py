@@ -374,7 +374,7 @@ class AnalysisWorker(QThread):
         return info
 
     def _categorize_path(self, file_path: Path) -> str:
-        """Categoriza usando extensión y heurísticas simples para reducir VARIOS."""
+        """Categoriza con este orden: extensión, MIME, heurísticas por nombre y VARIOS."""
         extension = file_path.suffix.lower()
         category = self.ext_to_categoria.get(extension)
         if category:
@@ -678,5 +678,8 @@ class OrganizeWorker(QThread):
             source_hash = self.hash_manager.calculate_file_hash(source, 'md5')
             dest_hash = self.hash_manager.calculate_file_hash(destination, 'md5')
             return bool(source_hash and source_hash == dest_hash)
-        except Exception:
+        except Exception as error:
+            self.progress_update.emit(
+                f"⚠️ No se pudo verificar duplicado para {source.name}: {error}"
+            )
             return False

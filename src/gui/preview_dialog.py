@@ -5,6 +5,7 @@ Muestra una vista previa de los cambios antes de organizar
 """
 
 from pathlib import Path
+from datetime import datetime
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -169,9 +170,7 @@ class PreviewDialog(QDialog):
         base_folder = "VARIOS" if category == "VARIOS" else category
         base_path = Path(self.folder_path) / base_folder
         if organize_by_date and not is_folder:
-            modified = path_obj.stat().st_mtime
-            from datetime import datetime
-            date_info = datetime.fromtimestamp(modified)
+            date_info = datetime.fromtimestamp(path_obj.stat().st_mtime)
             base_path = base_path / str(date_info.year) / f"{date_info.month:02d}"
         return base_path / path_obj.name
 
