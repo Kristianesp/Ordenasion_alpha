@@ -530,7 +530,12 @@ class OrganizeWorker(QThread):
                     mov.get('file'), mov['category']
                 ):
                     if candidate != Path(self.source_folder):
-                        categories.add(str(candidate.relative_to(Path(self.source_folder))))
+                        try:
+                            categories.add(
+                                str(candidate.relative_to(Path(self.source_folder)))
+                            )
+                        except ValueError:
+                            continue
             
             created_folders = []
             existing_folders = []

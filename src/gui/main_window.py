@@ -1124,7 +1124,12 @@ class FileOrganizerGUI(QMainWindow):
                 selected_size += row_data.get("size_bytes", 0)
 
                 # Contar archivos
-                selected_files += row_data.get("file_count", 1)
+                if row_data.get("type") == "file_group":
+                    selected_files += row_data.get(
+                        "file_count", len(row_data.get("group_files", []))
+                    )
+                else:
+                    selected_files += row_data.get("file_count", 1)
 
         # Actualizar las tarjetas de estadísticas
         self.total_size_label.setText(f"💾 {self.format_size(selected_size)}")
