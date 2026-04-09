@@ -259,7 +259,7 @@ class ConfigDialog(QDialog):
 
         exclusions_layout.addWidget(QLabel("Rutas protegidas"), 2, 0)
         self.protected_path_input = QLineEdit()
-        self.protected_path_input.setPlaceholderText("Añade una ruta protegida")
+        self.protected_path_input.setPlaceholderText("/home/usuario/Documentos")
         self.protected_path_input.returnPressed.connect(self.add_protected_path_from_input)
         exclusions_layout.addWidget(self.protected_path_input, 2, 1)
         self.browse_protected_path_btn = QPushButton("📂 Examinar")
@@ -276,7 +276,7 @@ class ConfigDialog(QDialog):
 
         exclusions_layout.addWidget(QLabel("Carpetas ignoradas"), 4, 0)
         self.ignored_path_input = QLineEdit()
-        self.ignored_path_input.setPlaceholderText("Añade una carpeta a ignorar")
+        self.ignored_path_input.setPlaceholderText("/home/usuario/Descargas/tmp")
         self.ignored_path_input.returnPressed.connect(self.add_ignored_path_from_input)
         exclusions_layout.addWidget(self.ignored_path_input, 4, 1)
         self.browse_ignored_path_btn = QPushButton("📂 Examinar")

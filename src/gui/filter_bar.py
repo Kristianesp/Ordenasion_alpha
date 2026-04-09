@@ -107,6 +107,7 @@ class FilterBar(QWidget):
             QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
         )
         layout.addWidget(self.count_label)
+        self.update_selection_summary(0, 0, "💾 0 B", "📄 0 elementos")
 
     def _on_search_changed(self):
         """Debounce en busqueda"""

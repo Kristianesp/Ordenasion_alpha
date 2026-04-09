@@ -218,7 +218,7 @@ class FileOrganizerGUI(QMainWindow):
         source_header = QHBoxLayout()
         source_header.setSpacing(12)
         source_summary = QLabel(
-            "Modo básico para organizar rápido. Activa el modo avanzado para perfiles, duplicados y exclusiones."
+            "Modo básico para organizar rápido. Activa el modo avanzado para perfiles, duplicados y exclusiones"
         )
         source_summary.setWordWrap(True)
         source_header.addWidget(source_summary, 1)
