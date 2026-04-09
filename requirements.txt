@@ -4,7 +4,7 @@
 # === DEPENDENCIAS ACTIVAS ===
 PyQt6>=6.4.0          # Interfaz gráfica principal
 psutil>=5.9.0          # Información del sistema y discos
-WMI>=1.5.1
+WMI>=1.5.1; sys_platform == "win32"
 
 # === DEPENDENCIAS OPCIONALES - PRIORIDAD 4 ===
 # Las siguientes dependencias se instalarán según necesidad:

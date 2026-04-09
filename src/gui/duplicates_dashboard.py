@@ -1189,7 +1189,8 @@ class DuplicatesDashboard(QWidget):
                         self.log_message(f"✅ Enviado a papelera: {file_path.name}")
                     else:
                         error_count += 1
-                        self.log_message(f"❌ No se pudo eliminar: {file_path.name}")
+                        reason = self.transaction_manager.last_error or "motivo no disponible"
+                        self.log_message(f"❌ No se pudo eliminar: {file_path.name} ({reason})")
                     
                 except Exception as e:
                     error_count += 1

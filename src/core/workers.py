@@ -88,6 +88,9 @@ class AnalysisWorker(QThread):
                     assigned_category = (
                         main_category if percentage >= self.min_percentage else "VARIOS"
                     )
+                    # Si la carpeta es demasiado heterogénea para el umbral elegido,
+                    # se conserva visible en resultados pero se envía a VARIOS para
+                    # evitar clasificaciones agresivas e incorrectas.
                     
                     movement = {
                         'folder': folder,

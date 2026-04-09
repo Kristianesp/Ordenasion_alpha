@@ -40,6 +40,7 @@ class TransactionManager:
         self.current_transaction: Optional[str] = None
         self.operations: List[Dict[str, Any]] = []
         self.is_transaction_active = False
+        self.last_error: Optional[str] = None
         self._load_log()
     
     def _load_log(self):
@@ -123,6 +124,7 @@ class TransactionManager:
             True si se movió exitosamente
         """
         try:
+            self.last_error = None
             # Validaciones previas
             if not source.exists():
                 raise FileNotFoundError(f"Archivo origen no existe: {source}")
@@ -160,6 +162,7 @@ class TransactionManager:
             return True
             
         except Exception as e:
+            self.last_error = str(e)
             print(f"❌ Error moviendo {source}: {e}")
             return False
     
@@ -175,6 +178,7 @@ class TransactionManager:
             True si se eliminó exitosamente
         """
         try:
+            self.last_error = None
             if not file_path.exists():
                 raise FileNotFoundError(f"Archivo no existe: {file_path}")
             
@@ -204,6 +208,7 @@ class TransactionManager:
             return True
             
         except Exception as e:
+            self.last_error = str(e)
             print(f"❌ Error eliminando {file_path}: {e}")
             return False
     
@@ -219,6 +224,7 @@ class TransactionManager:
             True si se renombró exitosamente
         """
         try:
+            self.last_error = None
             if not old_path.exists():
                 raise FileNotFoundError(f"Archivo no existe: {old_path}")
             
@@ -240,6 +246,7 @@ class TransactionManager:
             return True
             
         except Exception as e:
+            self.last_error = str(e)
             print(f"❌ Error renombrando {old_path}: {e}")
             return False
     
