@@ -59,7 +59,7 @@ class FilterBar(QWidget):
         self.total_size_label.setVisible(False)
         layout.addWidget(self.total_size_label)
 
-        self.total_files_label = QLabel("📄 0 archivos")
+        self.total_files_label = QLabel("📄 0 elementos")
         self.total_files_label.setObjectName("total_files_label")
         self.total_files_label.setVisible(False)
         layout.addWidget(self.total_files_label)
