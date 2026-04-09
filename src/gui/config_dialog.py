@@ -868,9 +868,9 @@ class ConfigDialog(QDialog):
             self._set_list_values(widget, values)
 
     def browse_protected_path(self):
-        path = self.protected_path_input.text().strip()
+        path = QFileDialog.getExistingDirectory(self, "Seleccionar ruta protegida")
         if not path:
-            path = QFileDialog.getExistingDirectory(self, "Seleccionar ruta protegida")
+            path = self.protected_path_input.text().strip()
         if path:
             self._append_unique_path(self.protected_paths_list, path)
         self.protected_path_input.clear()
@@ -881,9 +881,9 @@ class ConfigDialog(QDialog):
             self.protected_paths_list.takeItem(row)
 
     def browse_ignored_path(self):
-        path = self.ignored_path_input.text().strip()
+        path = QFileDialog.getExistingDirectory(self, "Seleccionar carpeta ignorada")
         if not path:
-            path = QFileDialog.getExistingDirectory(self, "Seleccionar carpeta ignorada")
+            path = self.ignored_path_input.text().strip()
         if path:
             self._append_unique_path(self.ignored_paths_list, path)
         self.ignored_path_input.clear()
