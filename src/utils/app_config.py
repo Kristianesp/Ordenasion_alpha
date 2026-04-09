@@ -219,8 +219,7 @@ class AppConfig:
 
     def set_ignored_paths(self, paths: list[str]) -> bool:
         """Guarda rutas ignoradas."""
-        cleaned = [str(Path(path)).strip() for path in paths if str(path).strip()]
-        return self.set("analysis.ignored_paths", cleaned)
+        return self.set("analysis.ignored_paths", self._clean_path_list(paths))
 
     def get_protected_paths(self) -> list[str]:
         """Retorna rutas protegidas."""
@@ -228,8 +227,7 @@ class AppConfig:
 
     def set_protected_paths(self, paths: list[str]) -> bool:
         """Guarda rutas protegidas."""
-        cleaned = [str(Path(path)).strip() for path in paths if str(path).strip()]
-        return self.set("analysis.protected_paths", cleaned)
+        return self.set("analysis.protected_paths", self._clean_path_list(paths))
 
     def get_favorite_paths(self) -> list[str]:
         """Retorna rutas favoritas."""
@@ -286,6 +284,10 @@ class AppConfig:
         originals = self.get_preferred_originals()
         originals.pop(str(hash_value), None)
         return self.set("duplicates.preferred_originals", originals)
+
+    def _clean_path_list(self, paths: list[str]) -> list[str]:
+        """Normaliza una lista de rutas configurables."""
+        return [str(Path(path)).strip() for path in paths if str(path).strip()]
     
     def reset_to_default(self) -> bool:
         """Restaura la configuración por defecto"""

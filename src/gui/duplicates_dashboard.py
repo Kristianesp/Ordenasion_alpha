@@ -1036,10 +1036,15 @@ class DuplicatesDashboard(QWidget):
                     
                     preferred_path = self.preferred_originals.get(hash_value)
                     files_info.sort(key=lambda x: x['date'], reverse=True)
-                    if preferred_path:
-                        for file_info in files_info:
-                            file_info['is_original'] = file_info['path'] == preferred_path
-                    if not any(file_info['is_original'] for file_info in files_info):
+                    for file_info in files_info:
+                        file_info['is_original'] = False
+                    preferred_match = next(
+                        (file_info for file_info in files_info if file_info['path'] == preferred_path),
+                        None,
+                    )
+                    if preferred_match:
+                        preferred_match['is_original'] = True
+                    else:
                         files_info[0]['is_original'] = True
                     
                     # Agregar todos los archivos del grupo

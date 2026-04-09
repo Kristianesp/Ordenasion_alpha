@@ -13,7 +13,6 @@ from collections import Counter, defaultdict
 from datetime import datetime
 
 from PyQt6.QtCore import QThread, pyqtSignal
-from PyQt6.QtWidgets import QMessageBox
 
 from src.utils.constants import VARIOS_FOLDER
 from .hash_manager import HashManager
@@ -80,7 +79,7 @@ class AnalysisWorker(QThread):
             self.error_occurred.emit(f"❌ Error durante el análisis: {str(e)}")
     
     def analyze_folders(self) -> List[Dict[str, Any]]:
-        """Analiza las carpetas en la ruta especificada"""
+        """Analiza carpetas y las envía a VARIOS si no superan el umbral de similitud."""
         folder_movements = []
         folder_path = Path(self.folder_path)
         

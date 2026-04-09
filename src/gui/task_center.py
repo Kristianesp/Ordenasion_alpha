@@ -73,6 +73,11 @@ class BackgroundTaskRegistry(QObject):
     def get_tasks(self) -> list[tuple[str, dict]]:
         return list(self._tasks.items())
 
+    def get_task(self, task_id: str) -> Optional[dict]:
+        """Obtiene una tarea concreta."""
+        task = self._tasks.get(task_id)
+        return dict(task) if task else None
+
 
 task_registry = BackgroundTaskRegistry()
 
@@ -135,7 +140,7 @@ class TaskCenterDialog(QDialog):
             self.details.setPlainText("No hay tarea seleccionada.")
             return
         task_id = current.data(256)
-        task = dict(self.registry._tasks.get(task_id, {}))
+        task = self.registry.get_task(task_id)
         if not task:
             self.details.setPlainText("No hay datos disponibles.")
             return
