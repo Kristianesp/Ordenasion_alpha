@@ -462,6 +462,7 @@ class OrganizeWorker(QThread):
         self.current_transaction_id = None
         self.organize_by_date = organize_by_date
         self.check_duplicates = check_duplicates
+        self.hash_manager = HashManager()
         self._moved_files = []  # Track moved files for duplicate checking
     
     def run(self):
@@ -674,8 +675,8 @@ class OrganizeWorker(QThread):
         try:
             if source.stat().st_size != destination.stat().st_size:
                 return False
-            source_hash = HashManager().calculate_file_hash(source, 'md5')
-            dest_hash = HashManager().calculate_file_hash(destination, 'md5')
+            source_hash = self.hash_manager.calculate_file_hash(source, 'md5')
+            dest_hash = self.hash_manager.calculate_file_hash(destination, 'md5')
             return bool(source_hash and source_hash == dest_hash)
         except Exception:
             return False

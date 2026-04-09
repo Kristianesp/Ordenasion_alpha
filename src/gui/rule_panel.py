@@ -144,7 +144,9 @@ class RulePanel(QDialog):
             return None
 
         categories = sorted(self.category_manager.get_categories().keys())
-        current_index = max(0, categories.index(existing.category)) if existing and existing.category in categories else 0
+        current_index = 0
+        if existing and existing.category in categories:
+            current_index = categories.index(existing.category)
         category, ok = QInputDialog.getItem(
             self,
             "Categoría destino",
