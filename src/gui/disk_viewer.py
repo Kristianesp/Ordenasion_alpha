@@ -5,8 +5,11 @@ Interfaz visual consistente con el diseño principal de la aplicación
 """
 
 import os
+import json
+import html
 from typing import Optional, List
 from pathlib import Path
+from datetime import datetime
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, 
@@ -47,6 +50,8 @@ class DiskViewer(QWidget):
         # Cache local para datos SMART ya obtenidos
         self._smart_cache = {}
         self._cache_priority = {}  # Prioridad de cache por disco
+        self.history_file = Path("disk_health_history.json")
+        self.health_history = self._load_health_history()
         
         self.init_ui()
         self.setup_connections()
@@ -63,6 +68,39 @@ class DiskViewer(QWidget):
         
         # Auto-refresh desactivado para mantener la selección del usuario
         # self.refresh_timer.start(30000)
+
+    def _load_health_history(self):
+        """Carga historial persistente de salud."""
+        try:
+            if self.history_file.exists():
+                with open(self.history_file, "r", encoding="utf-8") as handler:
+                    return json.load(handler)
+        except Exception:
+            pass
+        return {}
+
+    def _save_health_history(self):
+        """Guarda historial persistente de salud."""
+        try:
+            with open(self.history_file, "w", encoding="utf-8") as handler:
+                json.dump(self.health_history, handler, indent=2, ensure_ascii=False)
+        except Exception as error:
+            self.log_message(f"⚠️ No se pudo guardar historial SMART: {error}")
+
+    def _record_health_snapshot(self, mountpoint: str, health_data: dict):
+        """Guarda una muestra simple de salud por disco."""
+        entries = self.health_history.setdefault(mountpoint, [])
+        entries.insert(
+            0,
+            {
+                "recorded_at": datetime.now().isoformat(timespec="seconds"),
+                "score": health_data.get("score"),
+                "status": health_data.get("status"),
+                "temperature": health_data.get("temperature"),
+            },
+        )
+        self.health_history[mountpoint] = entries[:5]
+        self._save_health_history()
     
     def init_ui(self):
         """Inicializa la interfaz de usuario con diseño ultra compacto y eficiente"""
@@ -1246,6 +1284,7 @@ class DiskViewer(QWidget):
             current_theme = self.get_current_theme_name()
             disk_info = self.disk_manager.get_disk_info(mountpoint)
             if disk_info:
+                self._record_health_snapshot(mountpoint, health_data)
                 health_text = self._render_health_html(current_theme, disk_info, health_data)
                 self.health_status_label.setText(health_text)
         except Exception as e:
@@ -2299,7 +2338,17 @@ class DiskViewer(QWidget):
         """Añade un mensaje al log"""
         from datetime import datetime
         timestamp = datetime.now().strftime("%H:%M:%S")
-        self.log_text.append(f"[{timestamp}] {message}")
+        level_color = "#1976d2"
+        if "❌" in message or "Error" in message:
+            level_color = "#c62828"
+        elif "⚠️" in message:
+            level_color = "#ed6c02"
+        elif "✅" in message:
+            level_color = "#2e7d32"
+        self.log_text.append(
+            f"<span style='color:#888'>[{timestamp}]</span> "
+            f"<span style='color:{level_color}'>{html.escape(message)}</span>"
+        )
         
         # Auto-scroll al final
         scrollbar = self.log_text.verticalScrollBar()
@@ -2404,6 +2453,37 @@ class DiskViewer(QWidget):
             health_text += self.get_themed_html_box(
                 current_theme, "success", "TIPO DE DISCO",
                 "✅ Disco de datos - Seguro para organización", "💾"
+            )
+
+        action_items = []
+        if score < 60:
+            action_items.append("Haz copia de seguridad y revisa SMART en detalle.")
+        if disk_info.usage_percent >= 85:
+            action_items.append("Libera espacio o mueve datos a otra unidad.")
+        if health_data.get("temperature") and health_data.get("temperature") >= 70:
+            action_items.append("Comprueba ventilación y temperatura del equipo.")
+        if not action_items:
+            action_items.append("No se requieren acciones inmediatas.")
+        health_text += self.get_themed_html_box(
+            current_theme,
+            "warning" if action_items[0] != "No se requieren acciones inmediatas." else "success",
+            "ACCIONES RECOMENDADAS",
+            "<br>".join(f"• {item}" for item in action_items),
+            "🧭",
+        )
+
+        history_items = self.health_history.get(disk_info.mountpoint, [])[:3]
+        if history_items:
+            history_html = "<br>".join(
+                f"• {item['recorded_at']}: {item.get('status', 'N/A')} · {item.get('score', 'N/A')}/100 · {item.get('temperature', 'N/A')}°C"
+                for item in history_items
+            )
+            health_text += self.get_themed_html_box(
+                current_theme,
+                "info",
+                "HISTORIAL RECIENTE",
+                history_html,
+                "🕘",
             )
 
         return health_text

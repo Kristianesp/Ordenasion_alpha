@@ -8,7 +8,7 @@ import os
 import shutil
 import mimetypes
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from collections import Counter, defaultdict
 from datetime import datetime
 
@@ -28,13 +28,32 @@ class AnalysisWorker(QThread):
     analysis_complete = pyqtSignal(list, list, dict)
     error_occurred = pyqtSignal(str)
 
-    def __init__(self, folder_path: str, categories: Dict[str, List[str]], ext_to_categoria: Dict[str, str], min_percentage: int = 70, advanced_analysis: bool = True):
+    def __init__(
+        self,
+        folder_path: str,
+        categories: Dict[str, List[str]],
+        ext_to_categoria: Dict[str, str],
+        min_percentage: int = 70,
+        advanced_analysis: bool = True,
+        min_file_size_mb: int = 0,
+        ignored_extensions: Optional[List[str]] = None,
+        ignored_paths: Optional[List[str]] = None,
+    ):
         super().__init__()
         self.folder_path = folder_path
         self.categories = categories
         self.ext_to_categoria = ext_to_categoria
         self.min_percentage = min_percentage  # Porcentaje mínimo de similitud
         self.advanced_analysis = advanced_analysis  # Nuevo: análisis avanzado
+        self.min_file_size_bytes = max(0, int(min_file_size_mb)) * 1024 * 1024
+        self.ignored_extensions = {
+            ext if str(ext).startswith(".") else f".{str(ext)}"
+            for ext in (ignored_extensions or [])
+            if str(ext).strip()
+        }
+        self.ignored_paths = [
+            str(Path(path)).lower() for path in (ignored_paths or []) if str(path).strip()
+        ]
         self.hash_manager = HashManager()
         self.is_running = True
     
@@ -74,7 +93,7 @@ class AnalysisWorker(QThread):
         for folder in folders:
             try:
                 # FILTRO INTELIGENTE: Solo excluir carpetas del sistema críticas
-                if self.is_system_folder(folder):
+                if self.is_excluded_path(folder) or self.is_system_folder(folder):
                     self.progress_update.emit(f"🚫 Excluyendo carpeta del sistema: {folder.name}")
                     continue
                 
@@ -144,6 +163,8 @@ class AnalysisWorker(QThread):
             for item in folder_path.iterdir():
                 try:
                     if item.is_file():
+                        if self._should_skip_file(item):
+                            continue
                         total_files += 1
                         try:
                             total_size += item.stat().st_size
@@ -215,6 +236,8 @@ class AnalysisWorker(QThread):
             for item in folder_path.iterdir():
                 try:
                     if item.is_file():
+                        if self._should_skip_file(item):
+                            continue
                         # Archivo individual
                         file_size = 0
                         try:
@@ -280,6 +303,8 @@ class AnalysisWorker(QThread):
             for file in files:
                 try:
                     # Información básica del archivo
+                    if self._should_skip_file(file):
+                        continue
                     file_size = file.stat().st_size
                     extension = file.suffix.lower()
                     file_date = file.stat().st_mtime
@@ -411,6 +436,27 @@ class AnalysisWorker(QThread):
                 return guessed_category
 
         return "VARIOS"
+
+    def is_excluded_path(self, path: Path) -> bool:
+        """Determina si una ruta debe excluirse del análisis."""
+        normalized = str(path).lower()
+        return any(
+            normalized == ignored or normalized.startswith(f"{ignored}{os.sep}")
+            for ignored in self.ignored_paths
+        )
+
+    def _should_skip_file(self, file_path: Path) -> bool:
+        """Aplica exclusiones por ruta, extensión y tamaño mínimo."""
+        if self.is_excluded_path(file_path):
+            return True
+        if file_path.suffix.lower() in self.ignored_extensions:
+            return True
+        if self.min_file_size_bytes <= 0:
+            return False
+        try:
+            return file_path.stat().st_size < self.min_file_size_bytes
+        except OSError:
+            return True
     
     def calculate_statistics(self, folder_movements: List[Dict], file_movements: List[Dict]) -> Dict[str, Any]:
         """Calcula estadísticas generales del análisis"""
@@ -453,9 +499,17 @@ class OrganizeWorker(QThread):
     progress_update = pyqtSignal(str)
     organize_complete = pyqtSignal(bool, str)
     rollback_available = pyqtSignal(str)  # Nueva señal para indicar que hay rollback disponible
+    summary_ready = pyqtSignal(dict)
     
-    def __init__(self, source_folder: str, folder_movements: List[Dict], file_movements: List[Dict], 
-                 organize_by_date: bool = False, check_duplicates: bool = False):
+    def __init__(
+        self,
+        source_folder: str,
+        folder_movements: List[Dict],
+        file_movements: List[Dict],
+        organize_by_date: bool = False,
+        check_duplicates: bool = False,
+        protected_paths: Optional[List[str]] = None,
+    ):
         super().__init__()
         self.source_folder = source_folder
         self.folder_movements = folder_movements
@@ -466,11 +520,25 @@ class OrganizeWorker(QThread):
         self.organize_by_date = organize_by_date
         self.check_duplicates = check_duplicates
         self.hash_manager = HashManager()
+        self.protected_paths = [
+            str(Path(path)).lower() for path in (protected_paths or []) if str(path).strip()
+        ]
         self._moved_files = []  # Track moved files for duplicate checking
+        self.summary = {
+            "folders_moved": 0,
+            "files_moved": 0,
+            "bytes_reorganized": 0,
+            "skipped_duplicates": 0,
+            "warnings": [],
+            "errors": [],
+            "duration_seconds": 0.0,
+            "created_folders": [],
+        }
     
     def run(self):
         """Ejecuta la organización de archivos y carpetas con transacciones"""
         try:
+            started_at = datetime.now()
             # 🚀 MEJORA: Iniciar transacción
             total_items = len(self.folder_movements) + len(self.file_movements)
             self.current_transaction_id = self.transaction_manager.begin_transaction(
@@ -490,6 +558,10 @@ class OrganizeWorker(QThread):
             
             # 🚀 MEJORA: Confirmar transacción
             self.transaction_manager.commit_transaction()
+            self.summary["duration_seconds"] = (
+                datetime.now() - started_at
+            ).total_seconds()
+            self.summary_ready.emit(dict(self.summary))
             
             self.progress_update.emit("✅ Organización completada exitosamente")
             self.organize_complete.emit(True, "Organización completada exitosamente")
@@ -509,6 +581,8 @@ class OrganizeWorker(QThread):
                 else:
                     error_msg += "\n⚠️ No se pudieron revertir todos los cambios"
             
+            self.summary["errors"].append(error_msg)
+            self.summary_ready.emit(dict(self.summary))
             self.organize_complete.emit(False, error_msg)
     
     def create_destination_structure(self):
@@ -551,6 +625,7 @@ class OrganizeWorker(QThread):
             
             # Informar sobre carpetas creadas y existentes
             if created_folders:
+                self.summary["created_folders"].extend(created_folders)
                 self.progress_update.emit(f"📁 Carpetas creadas: {', '.join(created_folders)}")
             if existing_folders:
                 self.progress_update.emit(f"📁 Carpetas existentes (reutilizadas): {', '.join(existing_folders)}")
@@ -574,6 +649,11 @@ class OrganizeWorker(QThread):
                 
                 folder = mov['folder']
                 category = mov['category']
+                if self._is_protected_path(folder):
+                    warning = f"Carpeta protegida omitida: {folder}"
+                    self.summary["warnings"].append(warning)
+                    self.progress_update.emit(f"🛡️ {warning}")
+                    continue
                 
                 # Determinar ruta de destino
                 if category == "VARIOS":
@@ -592,10 +672,14 @@ class OrganizeWorker(QThread):
                 
                 # 🚀 MEJORA: Usar safe_move_file del transaction_manager
                 if self.transaction_manager.safe_move_file(folder, dest_path):
+                    self.summary["folders_moved"] += 1
+                    self.summary["bytes_reorganized"] += mov.get('size', 0)
                     progress = f"📁 Movida carpeta: {folder.name} → {category}"
                     self.progress_update.emit(progress)
                 else:
-                    self.progress_update.emit(f"⚠️ Error moviendo carpeta: {folder.name}")
+                    error = f"Error moviendo carpeta: {folder.name}"
+                    self.summary["errors"].append(error)
+                    self.progress_update.emit(f"⚠️ {error}")
                 
         except Exception as e:
             raise Exception(f"Error moviendo carpetas: {str(e)}")
@@ -609,6 +693,11 @@ class OrganizeWorker(QThread):
                 
                 file = mov['file']
                 category = mov['category']
+                if self._is_protected_path(file):
+                    warning = f"Archivo protegido omitido: {file}"
+                    self.summary["warnings"].append(warning)
+                    self.progress_update.emit(f"🛡️ {warning}")
+                    continue
                 
                 # Determinar ruta de destino
                 dest_path = self._resolve_file_destination(file, category)
@@ -616,6 +705,7 @@ class OrganizeWorker(QThread):
                 # Mover archivo
                 if dest_path.exists():
                     if self.check_duplicates and self._is_duplicate_file(file, dest_path):
+                        self.summary["skipped_duplicates"] += 1
                         self.progress_update.emit(
                             f"⏭️ Duplicado omitido: {file.name} ya existe en {dest_path.parent}"
                         )
@@ -638,9 +728,13 @@ class OrganizeWorker(QThread):
                 
                 # 🚀 MEJORA: Usar safe_move_file del transaction_manager
                 if self.transaction_manager.safe_move_file(file, dest_path):
+                    self.summary["files_moved"] += 1
+                    self.summary["bytes_reorganized"] += mov.get('size', 0)
                     self.progress_update.emit(progress)
                 else:
-                    self.progress_update.emit(f"⚠️ Error moviendo archivo: {file.name}")
+                    error = f"Error moviendo archivo: {file.name}"
+                    self.summary["errors"].append(error)
+                    self.progress_update.emit(f"⚠️ {error}")
                 
         except Exception as e:
             raise Exception(f"Error moviendo archivos: {str(e)}")
@@ -691,3 +785,11 @@ class OrganizeWorker(QThread):
                 f"⚠️ No se pudo verificar duplicado para {source.name}: {error}"
             )
             return False
+
+    def _is_protected_path(self, path: Path) -> bool:
+        """Evita mover rutas marcadas como protegidas."""
+        normalized = str(path).lower()
+        return any(
+            normalized == protected or normalized.startswith(f"{protected}{os.sep}")
+            for protected in self.protected_paths
+        )

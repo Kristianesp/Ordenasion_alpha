@@ -7,6 +7,7 @@ Maneja la interfaz principal y la lógica de la aplicación
 import os
 import sys
 import time
+import html
 from pathlib import Path
 from typing import List, Dict, Any
 from collections import defaultdict
@@ -24,6 +25,7 @@ from PyQt6.QtWidgets import (
     QInputDialog,
     QTextEdit,
     QCheckBox,
+    QComboBox,
     QSpinBox,
     QProgressBar,
     QGroupBox,
@@ -59,6 +61,8 @@ from src.gui.duplicates_dashboard import DuplicatesDashboard, CheckboxDelegate
 from src.gui.table_models import VirtualizedMovementsModel
 from src.gui.preview_dialog import PreviewDialog
 from src.gui.filter_bar import FilterBar
+from src.gui.task_center import TaskCenterDialog, task_registry
+from src.gui.operation_summary_dialog import OperationSummaryDialog
 
 
 class FileOrganizerGUI(QMainWindow):
@@ -100,6 +104,9 @@ class FileOrganizerGUI(QMainWindow):
         self.profile_manager = ProfileManager()
         self.transaction_manager = TransactionManager()
         self.last_transaction_id = None
+        self.last_operation_summary = None
+        self.current_analysis_task_id = None
+        self.current_organize_task_id = None
         self._active_workers = []  # Lista de workers activos para limpieza
         # Lazy loading flags para pestanas
         self._disk_viewer_initialized = False
@@ -115,6 +122,7 @@ class FileOrganizerGUI(QMainWindow):
         active_profile = self.profile_manager.get_active_profile()
         if active_profile and hasattr(self, "profile_combo"):
             self.profile_combo.setCurrentText(active_profile.name)
+        self.refresh_saved_paths()
 
     def _init_disk_manager(self):
         """Inicializa DiskManager usando el estado centralizado"""
@@ -194,6 +202,11 @@ class FileOrganizerGUI(QMainWindow):
         self.config_btn.setMinimumWidth(90)
         self.config_btn.clicked.connect(self.open_configuration)
         hdr.addWidget(self.config_btn)
+        self.task_center_btn = QPushButton("🧵 Tareas")
+        self.task_center_btn.setFixedHeight(36)
+        self.task_center_btn.setMinimumWidth(90)
+        self.task_center_btn.clicked.connect(self.open_task_center)
+        hdr.addWidget(self.task_center_btn)
         ol.addLayout(hdr)
 
         # GroupBox: Carpeta de Origen + Opciones
@@ -220,6 +233,27 @@ class FileOrganizerGUI(QMainWindow):
         profile_row.addWidget(self.save_profile_btn)
         profile_row.addStretch()
         source_layout.addLayout(profile_row)
+
+        memory_row = QHBoxLayout()
+        memory_row.setSpacing(8)
+        memory_row.addWidget(QLabel("⭐ Rutas guardadas:"))
+        self.path_memory_combo = QComboBox()
+        self.path_memory_combo.setFixedHeight(34)
+        self.path_memory_combo.setMinimumWidth(320)
+        memory_row.addWidget(self.path_memory_combo, 1)
+        self.use_saved_path_btn = QPushButton("Usar")
+        self.use_saved_path_btn.setFixedHeight(34)
+        self.use_saved_path_btn.clicked.connect(self.use_selected_saved_path)
+        memory_row.addWidget(self.use_saved_path_btn)
+        self.add_favorite_btn = QPushButton("⭐ Favorito")
+        self.add_favorite_btn.setFixedHeight(34)
+        self.add_favorite_btn.clicked.connect(self.add_current_path_to_favorites)
+        memory_row.addWidget(self.add_favorite_btn)
+        self.remove_favorite_btn = QPushButton("🗑️ Quitar")
+        self.remove_favorite_btn.setFixedHeight(34)
+        self.remove_favorite_btn.clicked.connect(self.remove_selected_favorite)
+        memory_row.addWidget(self.remove_favorite_btn)
+        source_layout.addLayout(memory_row)
 
         # Fila 1: Input + Examinar
         input_row = QHBoxLayout()
@@ -266,6 +300,17 @@ class FileOrganizerGUI(QMainWindow):
         sim_row.addWidget(self.similarity_spinbox)
         opts_row.addLayout(sim_row)
 
+        size_row = QHBoxLayout()
+        size_row.setSpacing(4)
+        size_row.addWidget(QLabel("Tamaño mín.:"))
+        self.min_size_spinbox = QSpinBox()
+        self.min_size_spinbox.setRange(0, 10240)
+        self.min_size_spinbox.setSuffix(" MB")
+        self.min_size_spinbox.setFixedHeight(30)
+        self.min_size_spinbox.setFixedWidth(90)
+        size_row.addWidget(self.min_size_spinbox)
+        opts_row.addLayout(size_row)
+
         opts_row.addStretch()
 
         self.analyze_btn = QPushButton("🔍 Analizar")
@@ -275,6 +320,30 @@ class FileOrganizerGUI(QMainWindow):
         opts_row.addWidget(self.analyze_btn)
 
         source_layout.addLayout(opts_row)
+
+        exclusions_row = QHBoxLayout()
+        exclusions_row.setSpacing(8)
+        exclusions_row.addWidget(QLabel("🚫 Extensiones:"))
+        self.ignored_extensions_input = QLineEdit()
+        self.ignored_extensions_input.setPlaceholderText(".tmp,.log,.bak")
+        exclusions_row.addWidget(self.ignored_extensions_input, 1)
+        exclusions_row.addWidget(QLabel("🛡️ Rutas protegidas:"))
+        self.protected_paths_input = QLineEdit()
+        self.protected_paths_input.setPlaceholderText("separa con ;")
+        exclusions_row.addWidget(self.protected_paths_input, 1)
+        source_layout.addLayout(exclusions_row)
+
+        ignored_paths_row = QHBoxLayout()
+        ignored_paths_row.setSpacing(8)
+        ignored_paths_row.addWidget(QLabel("🚫 Carpetas ignoradas:"))
+        self.ignored_paths_input = QLineEdit()
+        self.ignored_paths_input.setPlaceholderText("separa con ;")
+        ignored_paths_row.addWidget(self.ignored_paths_input, 1)
+        self.add_ignored_path_btn = QPushButton("➕ Ruta")
+        self.add_ignored_path_btn.setFixedHeight(34)
+        self.add_ignored_path_btn.clicked.connect(self.add_ignored_path)
+        ignored_paths_row.addWidget(self.add_ignored_path_btn)
+        source_layout.addLayout(ignored_paths_row)
 
         ol.addWidget(source_group)
 
@@ -805,6 +874,8 @@ class FileOrganizerGUI(QMainWindow):
 
         if folder_path:
             self.folder_input.setText(folder_path)
+            self.app_config.push_recent_path(folder_path)
+            self.refresh_saved_paths()
             # Auto-analizar después de un pequeño delay
             QTimer.singleShot(500, self.start_analysis)
 
@@ -853,6 +924,12 @@ class FileOrganizerGUI(QMainWindow):
 
             # Log
             self.app_config.set_min_similarity(self.similarity_spinbox.value())
+            self.app_config.set_min_file_size_mb(self.min_size_spinbox.value())
+            self.app_config.set_ignored_extensions(self._parse_csv_extensions())
+            self.app_config.set_ignored_paths(self._parse_semicolon_paths(self.ignored_paths_input.text()))
+            self.app_config.set_protected_paths(self._parse_semicolon_paths(self.protected_paths_input.text()))
+            self.app_config.push_recent_path(folder_path)
+            self.refresh_saved_paths()
             self.log_message(f"🔍 Iniciando análisis de: {folder_path}")
 
             # Crear worker usando el gestor centralizado
@@ -862,6 +939,9 @@ class FileOrganizerGUI(QMainWindow):
                 self.category_manager.get_categories(),
                 self.category_manager.ext_to_categoria,
                 self.similarity_spinbox.value(),
+                min_file_size_mb=self.min_size_spinbox.value(),
+                ignored_extensions=self._parse_csv_extensions(),
+                ignored_paths=self._parse_semicolon_paths(self.ignored_paths_input.text()),
             )
 
             # Guardar referencia al worker para limpieza
@@ -870,7 +950,9 @@ class FileOrganizerGUI(QMainWindow):
             self._active_workers.append(analysis_worker)
 
             # Conectar señales específicas del worker
-            analysis_worker.progress_update.connect(self.log_message)
+            analysis_worker.progress_update.connect(
+                lambda message, task_id=worker_id: self._handle_task_progress(task_id, message)
+            )
             analysis_worker.analysis_complete.connect(self.on_analysis_complete)
             analysis_worker.error_occurred.connect(self.on_analysis_error)
 
@@ -880,6 +962,8 @@ class FileOrganizerGUI(QMainWindow):
             )
 
             # Iniciar worker
+            task_registry.start_task(worker_id, "Análisis de organización", analysis_worker.stop)
+            self.current_analysis_task_id = worker_id
             analysis_worker.start()
             self.log_message(f"✅ Worker de análisis iniciado: {worker_id}")
 
@@ -916,6 +1000,9 @@ class FileOrganizerGUI(QMainWindow):
         self.analyze_btn.setEnabled(True)
         self.organize_btn.setEnabled(True)
         self.preview_btn.setEnabled(True)
+        if self.current_analysis_task_id:
+            task_registry.finish_task(self.current_analysis_task_id, "Completada")
+            self.current_analysis_task_id = None
 
         # Ocultar progreso
         self.progress_bar.setVisible(False)
@@ -953,6 +1040,9 @@ class FileOrganizerGUI(QMainWindow):
 
         # Ocultar progreso
         self.progress_bar.setVisible(False)
+        if self.current_analysis_task_id:
+            task_registry.finish_task(self.current_analysis_task_id, "Error")
+            self.current_analysis_task_id = None
 
         QMessageBox.critical(self, "Error de Análisis", error_message)
 
@@ -1364,6 +1454,7 @@ class FileOrganizerGUI(QMainWindow):
             selected_file_movements,
             organize_by_date=self.organize_by_date_checkbox.isChecked(),
             check_duplicates=self.check_duplicates_checkbox.isChecked(),
+            protected_paths=self._parse_semicolon_paths(self.protected_paths_input.text()),
         )
 
         # Guardar referencia al worker para limpieza
@@ -1372,14 +1463,19 @@ class FileOrganizerGUI(QMainWindow):
         self._active_workers.append(organize_worker)
 
         # Conectar señales específicas del worker
-        organize_worker.progress_update.connect(self.log_message)
+        organize_worker.progress_update.connect(
+            lambda message, task_id=worker_id: self._handle_task_progress(task_id, message)
+        )
         organize_worker.organize_complete.connect(self.on_organize_complete)
         organize_worker.rollback_available.connect(self.on_rollback_available)
+        organize_worker.summary_ready.connect(self.on_operation_summary_ready)
 
         # Conectar señal de finalización para limpiar el worker
         organize_worker.finished.connect(lambda: self._cleanup_worker(organize_worker))
 
         # Iniciar worker
+        task_registry.start_task(worker_id, "Organización de archivos", organize_worker.stop)
+        self.current_organize_task_id = worker_id
         organize_worker.start()
         self.log_message(f"✅ Worker de organización iniciado: {worker_id}")
 
@@ -1391,9 +1487,17 @@ class FileOrganizerGUI(QMainWindow):
         self.progress_bar.setVisible(False)
 
         if success:
+            if self.current_organize_task_id:
+                task_registry.finish_task(self.current_organize_task_id, "Completada")
+                self.current_organize_task_id = None
             self.log_message("✅ " + message)
             QMessageBox.information(self, "Organización Completada", message)
+            if self.last_operation_summary:
+                OperationSummaryDialog(self.last_operation_summary, self).exec()
         else:
+            if self.current_organize_task_id:
+                task_registry.finish_task(self.current_organize_task_id, "Error")
+                self.current_organize_task_id = None
             self.log_message("❌ " + message)
             QMessageBox.critical(self, "Error de Organización", message)
 
@@ -1402,6 +1506,10 @@ class FileOrganizerGUI(QMainWindow):
         self.last_transaction_id = transaction_id
         self.rollback_btn.setEnabled(bool(transaction_id))
         self.log_message(f"↩️ Rollback disponible: {transaction_id}")
+
+    def on_operation_summary_ready(self, summary: dict):
+        """Guarda resumen de la última operación."""
+        self.last_operation_summary = summary
 
     def rollback_last_operation(self):
         """Revierte la última organización confirmada."""
@@ -1461,6 +1569,7 @@ class FileOrganizerGUI(QMainWindow):
         self.move_folders_checkbox.setChecked(profile.move_folders)
         self.similarity_spinbox.setValue(profile.similarity_threshold)
         self.organize_by_date_checkbox.setChecked(profile.organize_by_date)
+        self.protected_paths_input.setText(";".join(profile.exclude_patterns))
         self.log_message(f"🧩 Perfil cargado: {profile.name}")
 
     def save_current_profile(self):
@@ -1489,6 +1598,7 @@ class FileOrganizerGUI(QMainWindow):
         profile.move_folders = self.move_folders_checkbox.isChecked()
         profile.similarity_threshold = self.similarity_spinbox.value()
         profile.organize_by_date = self.organize_by_date_checkbox.isChecked()
+        profile.exclude_patterns = self._parse_semicolon_paths(self.protected_paths_input.text())
         profile.selected_categories = sorted(
             {
                 row_data.get("category")
@@ -1534,6 +1644,10 @@ class FileOrganizerGUI(QMainWindow):
             theme = self.app_config.get_theme()
             font_size = self.app_config.get_font_size()
             self.similarity_spinbox.setValue(self.app_config.get_min_similarity())
+            self.min_size_spinbox.setValue(self.app_config.get_min_file_size_mb())
+            self.ignored_extensions_input.setText(",".join(self.app_config.get_ignored_extensions()))
+            self.ignored_paths_input.setText(";".join(self.app_config.get_ignored_paths()))
+            self.protected_paths_input.setText(";".join(self.app_config.get_protected_paths()))
 
             # Aplicar tema y fuente JUNTOS en una sola operación
             self.apply_theme_and_font_together(theme, font_size)
@@ -1544,6 +1658,76 @@ class FileOrganizerGUI(QMainWindow):
 
         except Exception as e:
             self.log_message(f"⚠️ Error aplicando configuración guardada: {str(e)}")
+
+    def _parse_csv_extensions(self) -> List[str]:
+        return [
+            item.strip()
+            for item in self.ignored_extensions_input.text().split(",")
+            if item.strip()
+        ]
+
+    def _parse_semicolon_paths(self, value: str) -> List[str]:
+        return [item.strip() for item in value.split(";") if item.strip()]
+
+    def refresh_saved_paths(self):
+        """Actualiza el selector de favoritos y recientes."""
+        if not hasattr(self, "path_memory_combo"):
+            return
+        current = self.path_memory_combo.currentData()
+        self.path_memory_combo.clear()
+        for path in self.app_config.get_favorite_paths():
+            self.path_memory_combo.addItem(f"⭐ {path}", path)
+        for path in self.app_config.get_recent_paths():
+            label = f"🕘 {path}"
+            if self.path_memory_combo.findData(path) == -1:
+                self.path_memory_combo.addItem(label, path)
+        index = self.path_memory_combo.findData(current)
+        if index >= 0:
+            self.path_memory_combo.setCurrentIndex(index)
+
+    def use_selected_saved_path(self):
+        """Carga una ruta guardada en el campo principal."""
+        path = self.path_memory_combo.currentData()
+        if path:
+            self.folder_input.setText(path)
+
+    def add_current_path_to_favorites(self):
+        """Añade la ruta actual a favoritos."""
+        path = self.folder_input.text().strip()
+        if not path:
+            return
+        self.app_config.add_favorite_path(path)
+        self.refresh_saved_paths()
+        self.log_message(f"⭐ Ruta añadida a favoritos: {path}")
+
+    def remove_selected_favorite(self):
+        """Elimina la ruta seleccionada de favoritos."""
+        path = self.path_memory_combo.currentData()
+        if not path:
+            return
+        self.app_config.remove_favorite_path(path)
+        self.refresh_saved_paths()
+        self.log_message(f"🗑️ Ruta eliminada de favoritos: {path}")
+
+    def add_ignored_path(self):
+        """Añade una carpeta a la lista de exclusiones."""
+        folder_path = QFileDialog.getExistingDirectory(self, "Seleccionar carpeta ignorada")
+        if not folder_path:
+            return
+        current_paths = self._parse_semicolon_paths(self.ignored_paths_input.text())
+        if folder_path not in current_paths:
+            current_paths.append(folder_path)
+        self.ignored_paths_input.setText(";".join(current_paths))
+
+    def open_task_center(self):
+        """Abre el centro de tareas."""
+        TaskCenterDialog(self).exec()
+
+    def _handle_task_progress(self, task_id: str, message: str):
+        """Actualiza task center y log."""
+        task_registry.update_task(task_id, message)
+        self.log_message(message)
+
 
     def apply_theme_and_font_together(self, theme_name: str, font_size: int):
         """Aplica tema y fuente JUNTOS usando FastThemeApplier con precarga de caché"""
@@ -1986,7 +2170,18 @@ class FileOrganizerGUI(QMainWindow):
         from datetime import datetime
 
         timestamp = datetime.now().strftime("%H:%M:%S")
-        self.log_text.append(f"[{timestamp}] {message}")
+        level_color = "#1976d2"
+        if "❌" in message or "Error" in message:
+            level_color = "#c62828"
+        elif "⚠️" in message or "Advertencia" in message:
+            level_color = "#ed6c02"
+        elif "✅" in message:
+            level_color = "#2e7d32"
+        safe_message = html.escape(message)
+        self.log_text.append(
+            f"<span style='color:#888'>[{timestamp}]</span> "
+            f"<span style='color:{level_color}'>{safe_message}</span>"
+        )
 
         # Auto-scroll al final
         scrollbar = self.log_text.verticalScrollBar()

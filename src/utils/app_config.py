@@ -24,7 +24,17 @@ class AppConfig:
         },
         "analysis": {
             "min_similarity": 70,
-            "auto_analyze": True
+            "auto_analyze": True,
+            "min_file_size_mb": 0,
+            "ignored_extensions": [],
+            "ignored_paths": [],
+            "protected_paths": [],
+            "favorite_paths": [],
+            "recent_paths": []
+        },
+        "duplicates": {
+            "ignored_hashes": [],
+            "preferred_originals": {}
         },
         "health": {
             "temperature": {
@@ -180,6 +190,102 @@ class AppConfig:
     def set_min_similarity(self, percentage: int) -> bool:
         """Establece el porcentaje mínimo de similitud"""
         return self.set("analysis.min_similarity", percentage)
+
+    def get_min_file_size_mb(self) -> int:
+        """Obtiene el tamaño mínimo de archivo para análisis."""
+        return self.get("analysis.min_file_size_mb", 0)
+
+    def set_min_file_size_mb(self, size_mb: int) -> bool:
+        """Establece el tamaño mínimo de archivo para análisis."""
+        return self.set("analysis.min_file_size_mb", max(0, int(size_mb)))
+
+    def get_ignored_extensions(self) -> list[str]:
+        """Retorna extensiones ignoradas."""
+        return list(self.get("analysis.ignored_extensions", []))
+
+    def set_ignored_extensions(self, extensions: list[str]) -> bool:
+        """Guarda extensiones ignoradas normalizadas."""
+        normalized = []
+        for ext in extensions:
+            ext = str(ext).strip().lower()
+            if not ext:
+                continue
+            normalized.append(ext if ext.startswith(".") else f".{ext}")
+        return self.set("analysis.ignored_extensions", sorted(set(normalized)))
+
+    def get_ignored_paths(self) -> list[str]:
+        """Retorna rutas ignoradas."""
+        return list(self.get("analysis.ignored_paths", []))
+
+    def set_ignored_paths(self, paths: list[str]) -> bool:
+        """Guarda rutas ignoradas."""
+        cleaned = [str(Path(path)).strip() for path in paths if str(path).strip()]
+        return self.set("analysis.ignored_paths", cleaned)
+
+    def get_protected_paths(self) -> list[str]:
+        """Retorna rutas protegidas."""
+        return list(self.get("analysis.protected_paths", []))
+
+    def set_protected_paths(self, paths: list[str]) -> bool:
+        """Guarda rutas protegidas."""
+        cleaned = [str(Path(path)).strip() for path in paths if str(path).strip()]
+        return self.set("analysis.protected_paths", cleaned)
+
+    def get_favorite_paths(self) -> list[str]:
+        """Retorna rutas favoritas."""
+        return list(self.get("analysis.favorite_paths", []))
+
+    def add_favorite_path(self, path: str) -> bool:
+        """Añade una ruta a favoritos."""
+        favorites = self.get_favorite_paths()
+        normalized = str(Path(path)).strip()
+        if normalized and normalized not in favorites:
+            favorites.append(normalized)
+        return self.set("analysis.favorite_paths", favorites)
+
+    def remove_favorite_path(self, path: str) -> bool:
+        """Elimina una ruta de favoritos."""
+        normalized = str(Path(path)).strip()
+        favorites = [item for item in self.get_favorite_paths() if item != normalized]
+        return self.set("analysis.favorite_paths", favorites)
+
+    def get_recent_paths(self) -> list[str]:
+        """Retorna rutas recientes."""
+        return list(self.get("analysis.recent_paths", []))
+
+    def push_recent_path(self, path: str, limit: int = 8) -> bool:
+        """Inserta una ruta en el historial reciente."""
+        normalized = str(Path(path)).strip()
+        if not normalized:
+            return False
+        recents = [item for item in self.get_recent_paths() if item != normalized]
+        recents.insert(0, normalized)
+        return self.set("analysis.recent_paths", recents[:limit])
+
+    def get_ignored_duplicate_hashes(self) -> list[str]:
+        """Retorna hashes ignorados de duplicados."""
+        return list(self.get("duplicates.ignored_hashes", []))
+
+    def set_ignored_duplicate_hashes(self, hashes: list[str]) -> bool:
+        """Guarda hashes ignorados de duplicados."""
+        cleaned = [str(hash_value).strip() for hash_value in hashes if str(hash_value).strip()]
+        return self.set("duplicates.ignored_hashes", sorted(set(cleaned)))
+
+    def get_preferred_originals(self) -> Dict[str, str]:
+        """Retorna archivo preferido por hash de duplicados."""
+        return dict(self.get("duplicates.preferred_originals", {}))
+
+    def set_preferred_original(self, hash_value: str, path: str) -> bool:
+        """Guarda el original preferido para un grupo de duplicados."""
+        originals = self.get_preferred_originals()
+        originals[str(hash_value)] = str(path)
+        return self.set("duplicates.preferred_originals", originals)
+
+    def remove_preferred_original(self, hash_value: str) -> bool:
+        """Elimina la preferencia de original para un grupo."""
+        originals = self.get_preferred_originals()
+        originals.pop(str(hash_value), None)
+        return self.set("duplicates.preferred_originals", originals)
     
     def reset_to_default(self) -> bool:
         """Restaura la configuración por defecto"""
