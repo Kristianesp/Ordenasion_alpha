@@ -1,0 +1,15 @@
+{
+  "model_name": "Samsung SSD 980 PRO",
+  "serial_number": "S5GXNX0R123456A",
+  "firmware_version": "3B2QGXA7",
+  "smart_status": { "passed": true },
+  "nvme_smart_health_information_log": {
+    "temperature": 46,
+    "power_on_hours": 1234,
+    "power_cycles": 210,
+    "data_units_read": 100000,
+    "data_units_written": 250000,
+    "available_spare": 98
+  }
+}
+

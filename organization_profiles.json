@@ -1,0 +1,53 @@
+{
+  "profiles": [
+    {
+      "name": "📁 Basico",
+      "description": "Organizacion basica por categorias usando las extensiones de archivo",
+      "created": "2026-04-09T22:56:08.504851",
+      "modified": "2026-04-09T22:56:08.504852",
+      "folder_path": "",
+      "move_folders": true,
+      "similarity_threshold": 70,
+      "selected_categories": [],
+      "custom_rules": [],
+      "exclude_patterns": [],
+      "max_file_size_mb": 0,
+      "date_range": {},
+      "organize_by_date": false,
+      "dry_run": false
+    },
+    {
+      "name": "📄 Solo Archivos",
+      "description": "Organiza solo archivos, ignora las carpetas completas",
+      "created": "2026-04-09T22:56:08.504856",
+      "modified": "2026-04-09T22:56:08.504856",
+      "folder_path": "",
+      "move_folders": false,
+      "similarity_threshold": 60,
+      "selected_categories": [],
+      "custom_rules": [],
+      "exclude_patterns": [],
+      "max_file_size_mb": 0,
+      "date_range": {},
+      "organize_by_date": false,
+      "dry_run": false
+    },
+    {
+      "name": "📅 Por Fecha",
+      "description": "Organiza archivos en subcarpetas por fecha de modificacion",
+      "created": "2026-04-09T22:56:08.504857",
+      "modified": "2026-04-09T22:56:08.504858",
+      "folder_path": "",
+      "move_folders": true,
+      "similarity_threshold": 70,
+      "selected_categories": [],
+      "custom_rules": [],
+      "exclude_patterns": [],
+      "max_file_size_mb": 0,
+      "date_range": {},
+      "organize_by_date": true,
+      "dry_run": false
+    }
+  ],
+  "active_profile": null
+}
