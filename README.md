@@ -1,174 +1,324 @@
-# 📁 Organizador de Archivos y Carpetas
+# Ordenasion Alpha
 
-## 🚀 Descripción
+Aplicación de escritorio para Windows desarrollada en Python y PyQt6. Permite analizar, clasificar, organizar y revisar archivos desde una interfaz visual, con foco en seguridad operativa, vista previa antes de mover datos y herramientas adicionales para discos, duplicados y biblioteca musical.
 
-Aplicación de escritorio desarrollada en Python con PyQt6 para organizar automáticamente archivos y carpetas según categorías predefinidas. Permite gestionar extensiones de archivos, crear categorías personalizadas y organizar contenido de forma selectiva.
+Versión actual publicada: `v3.1.0_FIX`
 
-## ✨ Características Principales
+## Funcionalidades Principales
 
-- **🔍 Análisis Automático**: Analiza carpetas para identificar contenido organizable
-- **📊 Vista Previa**: Muestra todos los cambios antes de ejecutarlos
-- **☑️ Selección Selectiva**: Checkboxes para elegir qué elementos organizar
-- **📂 Expansión de Grupos**: Doble clic para expandir/contraer grupos de archivos
-- **⚙️ Configuración Personalizable**: Gestión de categorías y extensiones
-- **🎨 Interfaz Moderna**: Diseño limpio y responsive con colores distintivos
-- **📝 Registro de Actividades**: Log detallado de todas las operaciones
-- **🔄 Procesamiento en Segundo Plano**: No bloquea la interfaz durante operaciones
+- Organización automática de archivos y carpetas por categorías configurables.
+- Vista previa antes de ejecutar movimientos, con resolución explícita de conflictos.
+- Opción de mantener archivos duplicados renombrando el nuevo, sobrescribir archivos existentes u omitir conflictos.
+- Selección granular de elementos mediante checkboxes y grupos expandibles.
+- Refresco automático de la tabla tras finalizar una organización.
+- Rollback de operaciones recientes mediante registro transaccional.
+- Modo avanzado con perfiles, exclusiones, tamaño mínimo, similitud y búsqueda de duplicados.
+- Pestaña de discos con información de unidades, uso, estado SMART y análisis del sistema.
+- Pestaña de música para indexar biblioteca, revisar duplicados, reproducir audio y editar metadatos.
+- Pestaña de duplicados generales con modos rápido, híbrido y profundo.
+- Configuración persistente en JSON para categorías, preferencias, interfaz, audio y rutas recientes.
+- Interfaz con temas, pestañas principales y procesamiento en segundo plano para no bloquear la aplicación.
 
-## 🏗️ Estructura del Proyecto
+## Descarga
 
-```
-📁 Organizador de Archivos/
-├── 📄 main.py                    # Punto de entrada principal
-├── 📁 src/                       # Código fuente
-│   ├── 📁 gui/                   # Interfaz de usuario
-│   │   ├── 📄 main_window.py     # Ventana principal
-│   │   └── 📄 config_dialog.py   # Diálogo de configuración
-│   ├── 📁 core/                  # Lógica de negocio
-│   │   ├── 📄 category_manager.py # Gestor de categorías
-│   │   └── 📄 workers.py         # Workers para operaciones
-│   └── 📁 utils/                 # Utilidades y constantes
-│       └── 📄 constants.py       # Configuraciones y estilos
-└── 📄 README.md                  # Este archivo
-```
+La versión compilada se publica como ejecutable de Windows en GitHub Releases:
 
-## 🎯 Funcionalidades Detalladas
+`https://github.com/Kristianesp/Ordenasion_alpha/releases/tag/v3.1.0_FIX`
 
-### 📂 Organización Inteligente
-- **Categorización Automática**: Clasifica archivos por extensión
-- **Gestión de Carpetas**: Analiza contenido de subcarpetas
-- **Prevención de Conflictos**: Maneja nombres duplicados automáticamente
+Asset principal:
 
-### 🎨 Interfaz Visual
-- **Colores Distintivos**: 
-  - Grupos normales: Fondo gris sutil (`#f5f5f5`)
-  - Grupos expandidos: Fondo azul (`#bbdefb`)
-  - Archivos individuales: Fondo gris oscuro (`#e8e8e8`)
-- **Iconos Semánticos**: 📁 carpetas, 📄 archivos, 📂 expandido
-- **Estilos CSS**: Aplicación consistente de colores y estilos
+`OrganizadorAlpha_v3.1.0_FIX.exe`
 
-### ⚙️ Configuración Avanzada
-- **Categorías del Sistema**: MUSICA, VIDEOS, IMAGENES, DOCUMENTOS, PROGRAMAS, CODIGO
-- **Categorías Personalizadas**: Crear y gestionar nuevas categorías
-- **Gestión de Extensiones**: Añadir/eliminar extensiones por categoría
-- **Persistencia**: Guardado automático de configuraciones personalizadas
+## Pestañas de la Aplicación
 
-## 🚀 Instalación y Uso
+### Organizar
 
-### 📋 Requisitos
+Es el flujo principal de trabajo. Permite seleccionar una carpeta, analizar su contenido y decidir qué elementos mover.
+
+Incluye:
+
+- análisis de carpetas y archivos sueltos,
+- organización por categorías,
+- organización opcional por fecha,
+- umbral de similitud para carpetas mixtas,
+- tamaño mínimo de archivo,
+- selección total/parcial,
+- expansión de grupos de archivos,
+- preview final antes de mover,
+- actualización automática tras organizar,
+- botón de deshacer cuando hay una transacción reciente.
+
+### Discos
+
+Vista dedicada al estado de unidades y particiones del sistema.
+
+Incluye:
+
+- listado de discos/unidades,
+- espacio total, usado y libre,
+- porcentaje de uso,
+- identificación de unidad del sistema,
+- modo seguro de solo lectura,
+- análisis de disco seleccionado,
+- integración con `smartctl` cuando está disponible,
+- información de salud, temperatura y métricas SMART.
+
+### Música
+
+Pestaña especializada para biblioteca musical y duplicados de audio.
+
+Incluye:
+
+- escaneo de carpetas de música con opción recursiva,
+- indexación local de metadatos en SQLite (`media_index.db`),
+- soporte de formatos comunes como MP3, FLAC, WAV, M4A, AAC, OGG, WMA, ALAC, AIFF,
+- extracción de codec, duración, bitrate, sample rate, canales, bit depth y tags,
+- detección de duplicados musicales por identidad técnica y metadatos,
+- puntuación de calidad para sugerir la mejor copia,
+- reproducción integrada con `QMediaPlayer`,
+- panel de detalle con portada cuando está disponible,
+- edición manual de metadatos,
+- búsqueda de metadatos online si se configura y habilita,
+- cache de resultados de lookup,
+- filtros por estado: pendientes, variantes, aplicadas, completas, sin coincidencia, etc.,
+- personalización de columnas y persistencia de la vista.
+
+### Duplicados
+
+Herramienta para buscar duplicados generales en carpetas o discos.
+
+Modos disponibles:
+
+- rápido: agrupa por tamaño, nombre normalizado y extensión,
+- híbrido: usa filtro rápido y confirma sospechosos con hash,
+- profundo: compara por hash completo.
+
+También incluye acciones sobre resultados, vista de grupos, apertura de ubicación y gestión segura según el flujo disponible en la interfaz.
+
+### Log
+
+Registro operativo de la sesión.
+
+Permite:
+
+- revisar mensajes de análisis, organización, errores y advertencias,
+- limpiar el panel,
+- exportar el log a TXT,
+- saltar al final del registro.
+
+## Organización de Archivos
+
+La aplicación clasifica archivos por extensión, MIME básico y heurísticas de nombre. Las categorías por defecto incluyen:
+
+- `MUSICA`
+- `VIDEOS`
+- `IMAGENES`
+- `DOCUMENTOS`
+- `PROGRAMAS`
+- `CODIGO`
+- `VARIOS`
+
+Las categorías y extensiones se gestionan desde configuración y se guardan en `categories_config.json`.
+
+## Vista Previa y Conflictos
+
+Antes de organizar, la aplicación muestra una ventana de vista previa con:
+
+- tipo de elemento,
+- nombre,
+- destino,
+- ruta final,
+- estado de conflicto.
+
+Si existen conflictos en destino, el usuario puede elegir una política para esa ejecución:
+
+- mantener ambos renombrando el nuevo archivo,
+- sobrescribir archivo existente,
+- omitir elementos en conflicto.
+
+Para carpetas, el comportamiento seguro es renombrar para evitar sobrescritura recursiva accidental.
+
+Los nombres alternativos usan el formato habitual de Windows:
+
+`archivo (1).ext`, `archivo (2).ext`, etc.
+
+## Seguridad Operativa
+
+La aplicación evita mover archivos sin confirmación final. Las operaciones se ejecutan mediante `TransactionManager`, que registra movimientos, renombres, creación de carpetas y permite revertir la última organización cuando hay una transacción disponible.
+
+El borrado seguro usa papelera mediante `send2trash` cuando está instalado. Si no está disponible, usa cuarentena local en lugar de eliminación directa.
+
+## Configuración
+
+La configuración se guarda principalmente en:
+
+- `app_config.json`
+- `categories_config.json`
+- `operations_log.json`
+- `audio_duplicate_operations_log.json`
+- `media_index.db`
+
+Opciones destacadas:
+
+- tema visual y tamaño de fuente,
+- modo avanzado de interfaz,
+- autoanálisis,
+- rutas favoritas y recientes,
+- extensiones y rutas ignoradas,
+- rutas protegidas,
+- política de conflictos por defecto,
+- biblioteca musical,
+- Discogs y AcoustID opcionales,
+- columnas y estado visual de la tabla musical.
+
+No se deben subir tokens reales ni claves personales dentro de `app_config.json`.
+
+## Requisitos
+
+Requisitos principales:
+
 ```bash
-pip install PyQt6
+pip install -r requirements.txt
 ```
 
-### 🏃‍♂️ Ejecución
+Dependencias principales:
+
+- Python 3.10 o superior recomendado,
+- PyQt6,
+- psutil,
+- WMI en Windows,
+- send2trash,
+- mutagen.
+
+Dependencias opcionales comentadas en `requirements.txt` permiten ampliar detección de tipos, documentos, PDFs, Excel, compresión y gráficos.
+
+## Ejecución Desde Código
+
+Punto de entrada recomendado:
+
 ```bash
-python main.py
+python main_optimized.py
 ```
 
-### 📖 Uso Básico
-1. **Seleccionar Carpeta**: Usar botón "📂 Examinar" o escribir ruta
-2. **Analizar Contenido**: Hacer clic en "🔍 Analizar" (se ejecuta automáticamente)
-3. **Revisar Cambios**: Ver vista previa en la tabla
-4. **Seleccionar Elementos**: Usar checkboxes para elegir qué organizar
-5. **Expandir Grupos**: Doble clic en filas de "archivos sueltos"
-6. **Organizar**: Hacer clic en "📁 Organizar Archivos"
+También puede existir compatibilidad con otros entrypoints históricos según la rama o versión del proyecto.
 
-## 🔧 Configuración
+## Compilación del EXE
 
-### ⚙️ Abrir Configuración
-- Hacer clic en "⚙️ Configuración" en la barra superior
-- Gestionar categorías y extensiones
-- Exportar configuración a archivo de texto
-- Restaurar valores por defecto
+La compilación se realiza con PyInstaller y la spec optimizada incluida:
 
-### 📁 Categorías por Defecto
-- **MUSICA**: .mp3, .flac, .wav, .m4a, .aac, .ogg, .wma
-- **VIDEOS**: .mp4, .mkv, .avi, .mov, .wmv, .flv, .webm, .m4v
-- **IMAGENES**: .jpg, .jpeg, .png, .gif, .bmp, .tiff, .webp, .svg
-- **DOCUMENTOS**: .pdf, .doc, .docx, .txt, .rtf, .odt, .xls, .xlsx, .ppt, .pptx
-- **PROGRAMAS**: .exe, .msi, .deb, .rpm, .dmg, .pkg, .zip, .rar, .7z
-- **CODIGO**: .py, .js, .html, .css, .cpp, .c, .java, .php, .rb, .go
-
-## 🎨 Personalización
-
-### 🌈 Colores de la Interfaz
-```python
-COLORS = {
-    "GROUP_NORMAL": "#f5f5f5",      # Grupos normales
-    "GROUP_EXPANDED": "#bbdefb",    # Grupos expandidos
-    "FILE_EXPANDED": "#e8e8e8",     # Archivos individuales
-    "HEADER_BG": "#f0f0f0",         # Headers de tabla
-    "GRID_LINE": "#d0d0d0",         # Líneas de grid
-    "SELECTION": "#0078d4",         # Color de selección
-}
+```powershell
+python -m PyInstaller --clean --noconfirm OrganizadorAlpha_OPTIMIZED.spec
 ```
 
-### 📱 Configuración de UI
-```python
-UI_CONFIG = {
-    "WINDOW_TITLE": "📁 Organizador de Archivos y Carpetas",
-    "WINDOW_WIDTH": 1200,
-    "WINDOW_HEIGHT": 800,
-    "TABLE_ROW_HEIGHT": 25,
-    "BUTTON_HEIGHT": 40,
-    "INPUT_HEIGHT": 30,
-}
+Salida esperada:
+
+```text
+dist/OrganizadorAlpha_v3.1.0_FIX.exe
 ```
 
-## 🔍 Características Técnicas
+## Estructura del Proyecto
 
-### 🧵 Procesamiento en Segundo Plano
-- **AnalysisWorker**: Analiza carpetas sin bloquear UI
-- **OrganizeWorker**: Organiza archivos con progreso en tiempo real
-- **Señales Qt**: Comunicación asíncrona entre workers y UI
+```text
+.
+├── main_optimized.py
+├── OrganizadorAlpha_OPTIMIZED.spec
+├── requirements.txt
+├── README.md
+├── src/
+│   ├── core/
+│   │   ├── workers.py
+│   │   ├── category_manager.py
+│   │   ├── duplicate_finder.py
+│   │   ├── transaction_manager.py
+│   │   ├── disk_manager.py
+│   │   ├── health_service.py
+│   │   ├── audio_index.py
+│   │   ├── audio_duplicates.py
+│   │   ├── audio_fingerprint.py
+│   │   └── organization_conflicts.py
+│   ├── gui/
+│   │   ├── main_window.py
+│   │   ├── preview_dialog.py
+│   │   ├── config_dialog.py
+│   │   ├── disk_viewer.py
+│   │   ├── duplicates_dashboard.py
+│   │   ├── music_duplicates_view.py
+│   │   └── music_duplicates_*.py
+│   └── utils/
+│       ├── app_config.py
+│       ├── themes.py
+│       ├── theme_cache.py
+│       ├── smartctl_wrapper.py
+│       └── logger.py
+└── tests/
+    ├── test_organization_conflicts.py
+    ├── test_preview_dialog_conflicts.py
+    ├── test_main_window_refresh.py
+    ├── test_audio_*.py
+    └── test_music_duplicates_*.py
+```
 
-### 💾 Gestión de Datos
-- **CategoryManager**: Lógica central de categorías y extensiones
-- **Índice Inverso**: Mapeo eficiente de extensiones a categorías
-- **Persistencia JSON**: Guardado automático de configuraciones
+## Arquitectura
 
-### 🎯 Arquitectura Modular
-- **Separación de Responsabilidades**: UI, lógica de negocio y utilidades separadas
-- **Inyección de Dependencias**: Gestor de categorías inyectado en componentes
-- **Patrón Observer**: Workers notifican cambios a la UI
+La aplicación separa responsabilidades en tres capas principales:
 
-## 🐛 Solución de Problemas
+- `src/gui`: interfaz PyQt6, tablas, diálogos, pestañas y controles.
+- `src/core`: análisis, organización, duplicados, audio, discos y transacciones.
+- `src/utils`: configuración, temas, logging, constantes y wrappers del sistema.
 
-### ❌ Errores Comunes
-1. **"No se puede acceder a la carpeta"**: Verificar permisos de escritura
-2. **"Categoría no encontrada"**: Revisar configuración de extensiones
-3. **"Archivo ya existe"**: La aplicación maneja duplicados automáticamente
+Los procesos pesados se ejecutan mediante workers de Qt para mantener la interfaz activa. La comunicación con la UI se realiza mediante señales.
 
-### 🔧 Debugging
-- Revisar pestaña "📝 Registro" para mensajes de error
-- Verificar permisos de la carpeta de destino
-- Comprobar que las extensiones estén correctamente configuradas
+## Pruebas
 
-## 📈 Futuras Mejoras
+Ejecutar la suite completa:
 
-- [ ] **Filtros Avanzados**: Por fecha, tamaño o tipo de archivo
-- [ ] **Reglas Personalizadas**: Condiciones complejas para categorización
-- [ ] **Backup Automático**: Respaldo antes de organizar
-- [ ] **Estadísticas Visuales**: Gráficos de distribución de archivos
-- [ ] **Plugins**: Sistema de extensiones para categorías personalizadas
-- [ ] **Multiidioma**: Soporte para diferentes idiomas
+```bash
+python -m pytest
+```
 
-## 🤝 Contribuciones
+Pruebas focalizadas útiles:
 
-1. Fork del proyecto
-2. Crear rama para nueva funcionalidad
-3. Commit de cambios
-4. Push a la rama
-5. Crear Pull Request
+```bash
+python -m pytest tests/test_organization_conflicts.py tests/test_preview_dialog_conflicts.py tests/test_main_window_refresh.py -q
+python -m pytest tests/test_audio_config.py tests/test_audio_duplicates.py tests/test_audio_index.py -q
+```
 
-## 📄 Licencia
+## Atajos
 
-Este proyecto está bajo la Licencia MIT. Ver archivo LICENSE para más detalles.
+Atajos disponibles en la ventana principal:
 
-## 👨‍💻 Autor
+- `Ctrl+F`: ir a duplicados,
+- `Ctrl+A`: seleccionar todo,
+- `Ctrl+P` o `Ctrl+,`: abrir configuración,
+- `Ctrl+1` a `Ctrl+5`: cambiar entre pestañas principales,
+- `Ctrl+Q`: salir.
 
-Desarrollado con ❤️ para facilitar la organización de archivos digitales.
+## Solución de Problemas
 
----
+### No se puede acceder a una carpeta
 
-**💡 Consejo**: Haz doble clic en las filas de "archivos sueltos" para expandir y ver archivos individuales antes de organizar.
+Revisar permisos de lectura/escritura y comprobar si la ruta está marcada como protegida o excluida.
+
+### La vista previa muestra conflictos
+
+Seleccionar una política de resolución antes de organizar: mantener ambos, sobrescribir u omitir.
+
+### El análisis tarda demasiado
+
+Reducir el alcance de la carpeta, activar tamaño mínimo, desactivar análisis recursivo en música o usar modo rápido en duplicados.
+
+### No aparecen metadatos musicales
+
+Comprobar que `mutagen` esté instalado y que los archivos contengan tags válidos. Para búsquedas online, habilitar la opción correspondiente y configurar las claves necesarias.
+
+### SMART no muestra todos los datos
+
+Algunas métricas dependen del dispositivo, del controlador y de que `smartctl` esté instalado y accesible.
+
+## Estado del Proyecto
+
+Ordenasion Alpha está orientado a uso local en Windows. La versión `v3.1.0_FIX` incorpora correcciones importantes en el flujo de vista previa, resolución de conflictos antes de organizar, refresco automático tras mover archivos y una pestaña musical avanzada.
+
+## Licencia
+
+Licencia pendiente de definir en un archivo dedicado del repositorio.
