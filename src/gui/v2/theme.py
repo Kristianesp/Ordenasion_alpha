@@ -92,10 +92,14 @@ def apply_fluent_theme(config: AppConfig) -> FluentTokens:
     mode = config.get_theme_mode()
     accent = config.get_accent_color()
     setTheme(_to_theme(mode))
+    app = QApplication.instance()
+    if app is not None:
+        # FileOrganizerGUI aplica un QSS global heredado durante su arranque.
+        # La V2 debe usar la paleta Fluent y estilos locales, no ese QSS.
+        app.setStyleSheet("")
     if QColor(accent).isValid():
         setThemeColor(accent)
 
-    app = QApplication.instance()
     if app is not None:
         font = QFont(preferred_font_family(), max(9, config.get_font_size()))
         app.setFont(font)
