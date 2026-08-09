@@ -376,8 +376,9 @@ def main():
         )
         try:
             from src.gui.main_window import FileOrganizerGUI
+            from src.gui.v2.app_window import FluentAppWindow
 
-            log_message("  ✅ FileOrganizerGUI importado correctamente")
+            log_message("  ✅ FileOrganizerGUI y FluentAppWindow importados correctamente")
         except ImportError as import_err:
             log_message(f"  ❌ ImportError: {import_err}")
             if hasattr(import_err, "name"):
@@ -405,11 +406,12 @@ def main():
             app.processEvents()
 
         # Crear ventana principal
-        log_message("Creando instancia de FileOrganizerGUI...")
+        log_message("Creando shell Fluent V2 y controlador heredado...")
         try:
             # Los prints ahora se capturan automáticamente por LoggingStdout
-            window = FileOrganizerGUI()
-            log_message("✅ Ventana principal creada")
+            legacy_window = FileOrganizerGUI()
+            window = FluentAppWindow(legacy_window)
+            log_message("✅ Shell Fluent V2 creado")
         except Exception as e:
             log_message(f"❌ ERROR CRÍTICO creando ventana: {e}")
             log_message(traceback.format_exc())
@@ -444,6 +446,10 @@ def main():
         log_message("=" * 80)
         log_message("APLICACIÓN INICIADA CORRECTAMENTE")
         log_message("=" * 80)
+
+        if os.environ.get("ORDENASION_SMOKE") == "1":
+            log_message("Modo smoke activo: cerrando tras validar el arranque")
+            QTimer.singleShot(500, app.quit)
 
         # Ejecutar aplicación
         return app.exec()

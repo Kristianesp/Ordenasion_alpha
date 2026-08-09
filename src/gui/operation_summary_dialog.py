@@ -3,7 +3,8 @@
 Resumen post-organización.
 """
 
-from PyQt6.QtWidgets import QDialog, QLabel, QPushButton, QTextEdit, QVBoxLayout
+from PyQt6.QtWidgets import QDialog, QVBoxLayout
+from qfluentwidgets import PrimaryPushButton, TextEdit, TitleLabel
 
 
 class OperationSummaryDialog(QDialog):
@@ -12,15 +13,15 @@ class OperationSummaryDialog(QDialog):
     def __init__(self, summary: dict, parent=None):
         super().__init__(parent)
         self.summary = summary or {}
-        self.setWindowTitle("📊 Resumen de organización")
+        self.setWindowTitle("Resumen de organización")
         self.resize(540, 420)
         self._build_ui()
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("Resultado de la última ejecución:"))
+        layout.addWidget(TitleLabel("Resultado de la última ejecución"))
 
-        content = QTextEdit()
+        content = TextEdit()
         content.setReadOnly(True)
         content.setPlainText(
             "\n".join(
@@ -42,7 +43,7 @@ class OperationSummaryDialog(QDialog):
         )
         layout.addWidget(content, 1)
 
-        close_btn = QPushButton("Cerrar")
+        close_btn = PrimaryPushButton("Cerrar")
         close_btn.clicked.connect(self.accept)
         layout.addWidget(close_btn)
 

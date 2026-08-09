@@ -6,13 +6,18 @@ Barra de busqueda y filtro para tablas del Organizador de Archivos
 from PyQt6.QtWidgets import (
     QWidget,
     QHBoxLayout,
-    QLineEdit,
-    QComboBox,
     QLabel,
-    QPushButton,
     QSizePolicy,
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer
+from PyQt6.QtCore import pyqtSignal, QTimer
+from qfluentwidgets import ComboBox, FluentIcon, LineEdit, PushButton, TransparentToolButton
+
+
+def _fluent_button(icon, text: str = ""):
+    button = PushButton()
+    button.setIcon(icon)
+    button.setText(text)
+    return button
 
 
 class FilterBar(QWidget):
@@ -33,13 +38,15 @@ class FilterBar(QWidget):
         layout.setSpacing(6)
         self._layout = layout
 
-        self.select_all_btn = QPushButton("Todo")
+        self.select_all_btn = _fluent_button(FluentIcon.CHECKBOX, "Todo")
+        self.select_all_btn.setAccessibleName("Seleccionar todos")
         self.select_all_btn.setFixedHeight(30)
         self.select_all_btn.setVisible(False)
         self.select_all_btn.clicked.connect(self.select_all_requested.emit)
         layout.addWidget(self.select_all_btn)
 
-        self.deselect_all_btn = QPushButton("Nada")
+        self.deselect_all_btn = _fluent_button(FluentIcon.CLEAR_SELECTION, "Nada")
+        self.deselect_all_btn.setAccessibleName("Deseleccionar todos")
         self.deselect_all_btn.setFixedHeight(30)
         self.deselect_all_btn.setVisible(False)
         self.deselect_all_btn.clicked.connect(self.deselect_all_requested.emit)
@@ -49,17 +56,17 @@ class FilterBar(QWidget):
         self.selection_separator.setVisible(False)
         layout.addWidget(self.selection_separator)
 
-        self.selection_count_label = QLabel("📊 Elementos: 0/0 seleccionados")
+        self.selection_count_label = QLabel("Elementos: 0/0 seleccionados")
         self.selection_count_label.setObjectName("selection_count_label")
         self.selection_count_label.setVisible(False)
         layout.addWidget(self.selection_count_label)
 
-        self.total_size_label = QLabel("💾 0 B")
+        self.total_size_label = QLabel("0 B")
         self.total_size_label.setObjectName("total_size_label")
         self.total_size_label.setVisible(False)
         layout.addWidget(self.total_size_label)
 
-        self.total_files_label = QLabel("📄 0 elementos")
+        self.total_files_label = QLabel("0 elementos")
         self.total_files_label.setObjectName("total_files_label")
         self.total_files_label.setVisible(False)
         layout.addWidget(self.total_files_label)
@@ -68,7 +75,8 @@ class FilterBar(QWidget):
         self.controls_separator.setVisible(False)
         layout.addWidget(self.controls_separator)
 
-        self.search_input = QLineEdit()
+        self.search_input = LineEdit()
+        self.search_input.setAccessibleName("Buscar archivos")
         self.search_input.setPlaceholderText("Buscar por nombre...")
         self.search_input.setToolTip("Escribe para filtrar elementos por nombre")
         self.search_input.setFixedHeight(30)
@@ -80,7 +88,8 @@ class FilterBar(QWidget):
         layout.addWidget(self.search_input, 1)
 
         # Filtro por categoria con ancho minimo
-        self.category_filter = QComboBox()
+        self.category_filter = ComboBox()
+        self.category_filter.setAccessibleName("Filtrar por categoría")
         self.category_filter.setToolTip("Filtrar por categoria")
         self.category_filter.setFixedHeight(30)
         self.category_filter.setMinimumWidth(130)
@@ -94,7 +103,9 @@ class FilterBar(QWidget):
         layout.addWidget(self.category_filter)
 
         # Boton limpiar compacto
-        self.clear_btn = QPushButton("✖")
+        self.clear_btn = TransparentToolButton()
+        self.clear_btn.setIcon(FluentIcon.CANCEL)
+        self.clear_btn.setAccessibleName("Limpiar filtros")
         self.clear_btn.setToolTip("Limpiar todos los filtros")
         self.clear_btn.setFixedHeight(30)
         self.clear_btn.setFixedWidth(36)
@@ -107,7 +118,7 @@ class FilterBar(QWidget):
             QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
         )
         layout.addWidget(self.count_label)
-        self.update_selection_summary(0, 0, "💾 0 B", "📄 0 elementos")
+        self.update_selection_summary(0, 0, "0 B", "0 elementos")
 
     def _on_search_changed(self):
         """Debounce en busqueda"""
@@ -155,7 +166,7 @@ class FilterBar(QWidget):
     ):
         """Actualiza el resumen compacto de selección."""
         self.selection_count_label.setText(
-            f"📊 Elementos: {selected_count}/{total_count} seleccionados"
+            f"Elementos: {selected_count}/{total_count} seleccionados"
         )
         self.total_size_label.setText(size_text)
         self.total_files_label.setText(files_text)

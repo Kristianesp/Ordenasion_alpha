@@ -24,6 +24,9 @@ class AppConfig:
         "interface": {
             "font_size": 14,
             "theme": "🌞 Claro Elegante",  # Tema por defecto (nombre unificado con themes.py)
+            "theme_mode": "system",
+            "accent_color": "#0078D4",
+            "density": "comfortable",
             "ui_advanced_mode": False,
         },
         "categories": {"auto_save": True, "backup_enabled": True},
@@ -188,6 +191,42 @@ class AppConfig:
     def set_theme(self, theme: str) -> bool:
         """Establece el tema"""
         return self.set("interface.theme", theme)
+
+    def get_theme_mode(self) -> str:
+        """Obtiene el modo visual Fluent: light, dark o system."""
+        mode = str(self.get("interface.theme_mode", "")).lower()
+        if mode in {"light", "dark", "system"}:
+            return mode
+
+        legacy_theme = self.get_theme().lower()
+        return "dark" if "oscuro" in legacy_theme else "light"
+
+    def set_theme_mode(self, mode: str) -> bool:
+        """Guarda el modo visual Fluent normalizado."""
+        normalized = str(mode).lower()
+        if normalized not in {"light", "dark", "system"}:
+            normalized = "system"
+        return self.set("interface.theme_mode", normalized)
+
+    def get_accent_color(self) -> str:
+        """Obtiene el color de acento de la interfaz."""
+        return str(self.get("interface.accent_color", "#0078D4"))
+
+    def set_accent_color(self, color: str) -> bool:
+        """Guarda el color de acento de la interfaz."""
+        return self.set("interface.accent_color", str(color))
+
+    def get_interface_density(self) -> str:
+        """Obtiene la densidad visual."""
+        density = str(self.get("interface.density", "comfortable")).lower()
+        return density if density in {"comfortable", "compact"} else "comfortable"
+
+    def set_interface_density(self, density: str) -> bool:
+        """Guarda la densidad visual."""
+        normalized = str(density).lower()
+        if normalized not in {"comfortable", "compact"}:
+            normalized = "comfortable"
+        return self.set("interface.density", normalized)
 
     def get_ui_advanced_mode(self) -> bool:
         """Indica si la UI debe abrirse en modo avanzado."""
