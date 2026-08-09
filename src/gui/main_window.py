@@ -441,6 +441,26 @@ class FileOrganizerGUI(QMainWindow):
         progress_layout.addStretch()
         ol.addLayout(progress_layout)
 
+        # Resumen de estadísticas del análisis.
+        # Estos labels son consumidos por update_statistics(); mantenerlos
+        # en la interfaz evita que el flujo de análisis dependa de un bloque
+        # visual antiguo que ya no se crea en esta ventana.
+        stats_layout = QHBoxLayout()
+        self.stats_label = QLabel("📈 Sin análisis")
+        self.stats_label.setObjectName("stats_label")
+        stats_layout.addWidget(self.stats_label, 1)
+
+        self.category_stats_label = QLabel()
+        self.category_stats_label.setObjectName("category_stats_label")
+        self.category_stats_label.setVisible(False)
+        stats_layout.addWidget(self.category_stats_label)
+
+        self.available_categories_label = QLabel()
+        self.available_categories_label.setObjectName("available_categories_label")
+        self.available_categories_label.setVisible(False)
+        stats_layout.addWidget(self.available_categories_label)
+        ol.addLayout(stats_layout)
+
         # ===== PESTANA 2: DISCOS =====
         discs = QWidget()
         dl = QVBoxLayout(discs)
