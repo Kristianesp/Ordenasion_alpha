@@ -5,7 +5,7 @@ Optimizado para manejar grandes cantidades de datos sin congelar la UI
 """
 
 from PyQt6.QtCore import QAbstractTableModel, Qt, QModelIndex, QVariant
-from PyQt6.QtGui import QColor, QFont
+from PyQt6.QtGui import QColor, QFont, QIcon
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 from datetime import datetime
@@ -21,7 +21,21 @@ class VirtualizedMovementsModel(QAbstractTableModel):
         super().__init__(parent)
         self._data = data if data else []
         self._headers = ["☑️", "📂 Elemento", "📁 Destino", "📊 %", "📄 Archivos", "💾 Tamaño"]
-        self._checked_rows = set()  # Mantener estado de checkboxes
+        self._checked_ids = set()  # Mantener estado de checkboxes con IDs estables
+        # Mapeo de extensiones a iconos
+        self._icon_cache: Dict[str, QIcon] = {}
+        self._ext_icons = {
+            '.mp3': '🎵', '.wav': '🎵', '.flac': '🎵', '.aac': '🎵', '.ogg': '🎵', '.wma': '🎵',
+            '.mp4': '🎬', '.avi': '🎬', '.mkv': '🎬', '.mov': '🎬', '.wmv': '🎬', '.flv': '🎬', '.webm': '🎬',
+            '.jpg': '🖼️', '.jpeg': '🖼️', '.png': '🖼️', '.gif': '🖼️', '.bmp': '🖼️', '.svg': '🖼️', '.webp': '🖼️', '.ico': '🖼️',
+            '.pdf': '📄', '.doc': '📝', '.docx': '📝', '.txt': '📝', '.rtf': '📝', '.odt': '📝',
+            '.xls': '📊', '.xlsx': '📊', '.csv': '📊', '.ods': '📊',
+            '.ppt': '📽️', '.pptx': '📽️', '.odp': '📽️',
+            '.zip': '📦', '.rar': '📦', '.7z': '📦', '.tar': '📦', '.gz': '📦', '.bz2': '📦',
+            '.exe': '⚙️', '.msi': '⚙️', '.bat': '⚙️', '.cmd': '⚙️', '.sh': '⚙️',
+            '.py': '💻', '.js': '💻', '.html': '💻', '.css': '💻', '.java': '💻', '.cpp': '💻', '.c': '💻', '.h': '💻',
+            '.iso': '💿', '.img': '💿', '.dmg': '💿',
+        }
     
     def rowCount(self, parent=QModelIndex()) -> int:
         """Retorna el número total de filas"""
@@ -47,6 +61,16 @@ class VirtualizedMovementsModel(QAbstractTableModel):
         col = index.column()
         item_data = self._data[row]
         
+        # Rol de icono (para columna Elemento)
+        if role == Qt.ItemDataRole.DecorationRole and col == 1:
+            element = item_data.get('element', '')
+            # Extraer extension del nombre si existe
+            ext = self._get_extension(element)
+            if ext:
+                emoji = self._ext_icons.get(ext.lower(), '📄')
+                return QIcon()  # PyQt6 no soporta emoji directo, retornamos vacio
+            return None
+        
         # Rol de display (texto que se muestra)
         if role == Qt.ItemDataRole.DisplayRole:
             if col == 0:  # Checkbox - no mostrar texto en columna de checkbox
@@ -65,7 +89,9 @@ class VirtualizedMovementsModel(QAbstractTableModel):
         
         # Rol de checkbox (para columna 0)
         elif role == Qt.ItemDataRole.CheckStateRole and col == 0:
-            return Qt.CheckState.Checked if row in self._checked_rows else Qt.CheckState.Unchecked
+            if item_data.get('is_child', False):
+                return None
+            return Qt.CheckState.Checked if item_data.get('_row_id') in self._checked_ids else Qt.CheckState.Unchecked
         
         # Rol de font (negrita para grupos)
         elif role == Qt.ItemDataRole.FontRole:
@@ -93,10 +119,13 @@ class VirtualizedMovementsModel(QAbstractTableModel):
         
         # Manejar cambio de checkbox
         if role == Qt.ItemDataRole.CheckStateRole and col == 0:
+            row_id = self._data[row].get('_row_id')
+            if self._data[row].get('is_child', False) or not row_id:
+                return False
             if value == Qt.CheckState.Checked:
-                self._checked_rows.add(row)
+                self._checked_ids.add(row_id)
             else:
-                self._checked_rows.discard(row)
+                self._checked_ids.discard(row_id)
             
             self.dataChanged.emit(index, index, [Qt.ItemDataRole.CheckStateRole])
             return True
@@ -111,7 +140,7 @@ class VirtualizedMovementsModel(QAbstractTableModel):
         flags = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
         
         # Hacer checkboxes editables
-        if index.column() == 0:
+        if index.column() == 0 and not self._data[index.row()].get('is_child', False):
             flags |= Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEditable
         
         return flags
@@ -129,9 +158,33 @@ class VirtualizedMovementsModel(QAbstractTableModel):
     def update_data(self, new_data: List[Dict[str, Any]]):
         """Actualiza los datos del modelo y notifica a las vistas"""
         self.beginResetModel()
-        self._data = new_data
-        self._checked_rows.clear()
+        self._data = self._prepare_row_ids(new_data)
+        self._full_data = [dict(item) for item in self._data]  # Backup para filtros
+        self._checked_ids.clear()
+        self._search_filter = ""
+        self._category_filter = ""
         self.endResetModel()
+
+    def _build_row_id(self, item: Dict[str, Any], index: int) -> str:
+        row_type = item.get('type', 'row')
+        if row_type == 'folder':
+            original = item.get('original_data', {})
+            folder = original.get('folder')
+            return f"folder:{folder}" if folder else f"folder:{item.get('element', index)}"
+        if row_type == 'file_group':
+            return f"group:{item.get('category', '')}:{item.get('element', index)}"
+        if row_type == 'file_item':
+            original_file = item.get('original_file')
+            return f"file:{original_file}" if original_file else f"file:{item.get('element', index)}"
+        return f"{row_type}:{item.get('element', index)}:{index}"
+
+    def _prepare_row_ids(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        prepared = []
+        for index, item in enumerate(items):
+            cloned = dict(item)
+            cloned['_row_id'] = item.get('_row_id') or self._build_row_id(cloned, index)
+            prepared.append(cloned)
+        return prepared
 
     # --- API de expansión de grupos ---
     def is_group_row(self, row: int) -> bool:
@@ -168,7 +221,9 @@ class VirtualizedMovementsModel(QAbstractTableModel):
                 'is_group': False,
                 'is_expanded': False,
                 'is_child': True,
-                'parent_group_row': row
+                'parent_group_row': row,
+                'original_file': str(fm['file']),
+                '_row_id': f"file:{fm['file']}"
             })
 
         self.beginInsertRows(QModelIndex(), insert_at, insert_at + len(items) - 1)
@@ -213,7 +268,10 @@ class VirtualizedMovementsModel(QAbstractTableModel):
     
     def get_checked_rows(self) -> List[int]:
         """Retorna lista de índices de filas marcadas"""
-        return sorted(list(self._checked_rows))
+        return [
+            index for index, row in enumerate(self._data)
+            if row.get('_row_id') in self._checked_ids
+        ]
     
     def get_row_data(self, row: int) -> Optional[Dict[str, Any]]:
         """Retorna los datos de una fila específica"""
@@ -223,7 +281,11 @@ class VirtualizedMovementsModel(QAbstractTableModel):
     
     def check_all(self):
         """Marca todos los checkboxes"""
-        self._checked_rows = set(range(len(self._data)))
+        self._checked_ids = {
+            row.get('_row_id')
+            for row in self._data
+            if row.get('_row_id') and not row.get('is_child', False)
+        }
         self.dataChanged.emit(
             self.index(0, 0),
             self.index(self.rowCount() - 1, 0),
@@ -232,7 +294,7 @@ class VirtualizedMovementsModel(QAbstractTableModel):
     
     def uncheck_all(self):
         """Desmarca todos los checkboxes"""
-        self._checked_rows.clear()
+        self._checked_ids.clear()
         self.dataChanged.emit(
             self.index(0, 0),
             self.index(self.rowCount() - 1, 0),
@@ -243,8 +305,51 @@ class VirtualizedMovementsModel(QAbstractTableModel):
         """Limpia todos los datos del modelo"""
         self.beginResetModel()
         self._data.clear()
-        self._checked_rows.clear()
+        self._full_data = []
+        self._checked_ids.clear()
+        self._search_filter = ""
+        self._category_filter = ""
         self.endResetModel()
+    
+    # ===== FILTROS =====
+    
+    def set_filter(self, search_text: str = "", category: str = ""):
+        """Aplica filtros de busqueda y categoria"""
+        self._search_filter = search_text.lower()
+        self._category_filter = category
+        self._apply_filters()
+    
+    def _apply_filters(self):
+        """Aplica los filtros actuales a los datos"""
+        if not hasattr(self, '_full_data'):
+            self._full_data = list(self._data)
+        
+        filtered = self._full_data
+        
+        if self._search_filter:
+            filtered = [d for d in filtered if self._search_filter in d.get('element', '').lower()]
+        
+        if self._category_filter:
+            filtered = [d for d in filtered if d.get('category', '') == self._category_filter]
+        
+        self.beginResetModel()
+        self._data = [dict(item) for item in filtered]
+        self.endResetModel()
+    
+    def get_visible_count(self) -> int:
+        """Retorna numero de filas visibles despues de filtrar"""
+        return len(self._data)
+    
+    def _get_extension(self, filename: str) -> str:
+        """Extrae la extension de un nombre de archivo"""
+        if '.' in filename:
+            return '.' + filename.rsplit('.', 1)[1].lower()
+        return ""
+    
+    def get_file_emoji(self, filename: str) -> str:
+        """Retorna el emoji correspondiente a un archivo"""
+        ext = self._get_extension(filename)
+        return self._ext_icons.get(ext.lower(), '📄')
 
 
 class VirtualizedDuplicatesModel(QAbstractTableModel):
@@ -414,7 +519,7 @@ class VirtualizedDuplicatesModel(QAbstractTableModel):
     def clear_data(self):
         """Limpia todos los datos del modelo"""
         self.beginResetModel()
-        self._data.clear()
+        self._data = []
         self._checked_rows.clear()
         self.endResetModel()
 
