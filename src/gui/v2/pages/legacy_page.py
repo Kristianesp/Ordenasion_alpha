@@ -1,5 +1,6 @@
 """Adaptador visual para reutilizar páginas existentes durante la migración."""
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 from qfluentwidgets import ScrollArea
 
@@ -21,12 +22,14 @@ class LegacyPage(ScrollArea):
     ):
         super().__init__(parent)
         self.setObjectName(f"legacy_{title.lower().replace(' ', '_')}")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setWidgetResizable(True)
         self.setFrameShape(ScrollArea.Shape.NoFrame)
         self.enableTransparentBackground()
         self.legacy_widget = legacy_widget
 
         content = QWidget()
+        content.setObjectName("legacyContent")
         self.content = content
         self.setWidget(content)
         layout = QVBoxLayout(content)

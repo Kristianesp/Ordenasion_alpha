@@ -30,6 +30,7 @@ class HomePage(ScrollArea):
     def __init__(self, config: AppConfig, profile_manager, parent=None):
         super().__init__(parent)
         self.setObjectName("homePage")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.config = config
         self.profile_manager = profile_manager
         self.setWidgetResizable(True)
@@ -37,6 +38,7 @@ class HomePage(ScrollArea):
         self.enableTransparentBackground()
 
         self.content = QWidget()
+        self.content.setObjectName("homeContent")
         self.setWidget(self.content)
         self._build_ui()
         task_registry.tasks_updated.connect(self.refresh_metrics)

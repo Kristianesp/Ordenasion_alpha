@@ -1,5 +1,6 @@
 """Shell principal Fluent 2.0 construido sobre la lógica existente."""
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import QWidget
 from qfluentwidgets import FluentIcon, FluentWindow, NavigationItemPosition
@@ -14,7 +15,12 @@ from src.gui.v2.pages.home_page import HomePage
 from src.gui.v2.pages.legacy_page import LegacyPage
 from src.gui.v2.pages.organize_page import OrganizePage
 from src.gui.v2.pages.settings_page import SettingsPage
-from src.gui.v2.theme import apply_fluent_theme
+from src.gui.v2.theme import (
+    apply_fluent_palette,
+    apply_fluent_theme,
+    current_tokens,
+    fluent_window_stylesheet,
+)
 
 
 class FluentAppWindow(FluentWindow):
@@ -28,6 +34,8 @@ class FluentAppWindow(FluentWindow):
         self._legacy_pages: dict[str, LegacyPage] = {}
 
         self.setObjectName("fluentAppWindow")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setMicaEffectEnabled(False)
         self.setWindowTitle("Ordenasion 2.0")
         self.resize(1440, 900)
         self.setMinimumSize(1100, 700)
@@ -35,6 +43,7 @@ class FluentAppWindow(FluentWindow):
 
         self._detach_legacy_pages()
         self._build_navigation()
+        self._apply_shell_styles()
         self._connect_controller()
         self._setup_shortcuts()
 
@@ -119,6 +128,103 @@ class FluentAppWindow(FluentWindow):
             lambda _path: self._switch_route("organize")
         )
 
+    def _apply_shell_styles(self) -> None:
+        tokens = current_tokens(
+            self.config.get_accent_color(),
+            self.config.get_theme_mode(),
+        )
+        palette_targets = [self, self.navigationInterface]
+        for page in self._routes.values():
+            # ScrollArea instala un QSS transparente propio; el shell debe
+            # controlar la superficie para que el tema no termine en blanco.
+            page.setStyleSheet("")
+            palette_targets.append(page)
+            viewport = getattr(page, "viewport", lambda: None)()
+            content = getattr(page, "widget", lambda: None)()
+            if viewport is not None:
+                palette_targets.append(viewport)
+                viewport.setAutoFillBackground(True)
+                viewport.setStyleSheet(
+                    f"QWidget#qt_scrollarea_viewport {{"
+                    f" background-color: {tokens.canvas}; }}"
+                )
+            if content is not None:
+                palette_targets.append(content)
+                content.setStyleSheet(
+                    f"QWidget#{content.objectName()} {{"
+                    f" background-color: {tokens.canvas};"
+                    f" color: {tokens.text_primary}; }}"
+                )
+        palette_targets.extend(
+            child
+            for child in self.findChildren(QWidget)
+            if child.__class__.__name__
+            in {"NavigationPanel", "StackedWidget", "PopUpAniStackedWidget"}
+        )
+        for target in palette_targets:
+            apply_fluent_palette(target, self.config)
+        self.setStyleSheet(fluent_window_stylesheet(self.config))
+        navigation_stylesheet = f"""
+            NavigationInterface, NavigationPanel {{
+                background-color: {tokens.surface_alt};
+                color: {tokens.text_primary};
+            }}
+            NavigationToolButton {{
+                color: {tokens.text_secondary};
+                background-color: transparent;
+                border-radius: 8px;
+            }}
+            NavigationToolButton:hover {{
+                color: {tokens.text_primary};
+                background-color: {tokens.surface};
+            }}
+            NavigationToolButton:checked {{
+                color: white;
+                background-color: {tokens.accent};
+            }}
+            """
+        self.navigationInterface.setStyleSheet(navigation_stylesheet)
+        for child in self.navigationInterface.findChildren(QWidget):
+            if child.__class__.__name__ in {"NavigationPanel", "ScrollArea"}:
+                apply_fluent_palette(child, self.config)
+                child.setStyleSheet(
+                    f"{child.__class__.__name__} {{"
+                    f" background-color: {tokens.surface_alt};"
+                    f" color: {tokens.text_primary}; }}"
+                )
+        for child in self.findChildren(QWidget):
+            class_name = child.__class__.__name__
+            if class_name in {"FluentWidgetTitleBar", "FluentTitleBar"}:
+                object_name = (
+                    "fluentTitleBar"
+                    if class_name == "FluentWidgetTitleBar"
+                    else "fluentTitleBarContainer"
+                )
+                child.setObjectName(object_name)
+                child.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+                apply_fluent_palette(child, self.config)
+                child.setStyleSheet(
+                    f"QWidget#{object_name} {{"
+                    f" background-color: {tokens.surface_alt};"
+                    f" color: {tokens.text_primary}; }}"
+                )
+            elif class_name in {
+                "MinimizeButton",
+                "MaximizeButton",
+                "CloseButton",
+            }:
+                child.setStyleSheet(
+                    f"{class_name} {{"
+                    f" background-color: transparent;"
+                    f" color: {tokens.text_primary}; }}"
+                    f"{class_name}:hover {{"
+                    f" background-color: {tokens.surface}; }}"
+                )
+            elif child.objectName() == "titleLabel":
+                child.setStyleSheet(
+                    f"QLabel {{ color: {tokens.text_primary}; }}"
+                )
+
     def _setup_shortcuts(self) -> None:
         shortcuts: tuple[tuple[str, str], ...] = (
             ("Ctrl+1", "home"),
@@ -147,6 +253,7 @@ class FluentAppWindow(FluentWindow):
 
     def _refresh_theme(self) -> None:
         apply_fluent_theme(self.config)
+        self._apply_shell_styles()
         for page in self._legacy_pages.values():
             page.refresh_theme(self.config)
         self.legacy_window.log_message("Tema Fluent actualizado")

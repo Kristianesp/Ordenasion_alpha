@@ -30,8 +30,9 @@ class PageHeader(QWidget):
         parent=None,
     ):
         super().__init__(parent)
+        self.setObjectName("pageHeader")
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(18, 14, 18, 14)
         layout.setSpacing(12)
 
         text_layout = QVBoxLayout()

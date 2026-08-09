@@ -1,6 +1,6 @@
 """Configuración visual y accesos a la configuración avanzada."""
 
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 from qfluentwidgets import (
     BodyLabel,
@@ -30,11 +30,13 @@ class SettingsPage(ScrollArea):
         super().__init__(parent)
         self.config = config
         self.setObjectName("settingsPage")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setWidgetResizable(True)
         self.setFrameShape(ScrollArea.Shape.NoFrame)
         self.enableTransparentBackground()
 
         self.content = QWidget()
+        self.content.setObjectName("settingsContent")
         self.setWidget(self.content)
         self._build_ui()
         self._load_values()

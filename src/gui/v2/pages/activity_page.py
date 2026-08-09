@@ -26,6 +26,7 @@ class ActivityPage(QWidget):
         self.controller = controller
         self.log_widget = log_widget
         self.setObjectName("activityPage")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._build_ui()
         task_registry.tasks_updated.connect(self.refresh)
         self.refresh()

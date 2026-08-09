@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from PyQt6.QtGui import QColor, QFont, QFontDatabase
+from PyQt6.QtGui import QColor, QFont, QFontDatabase, QPalette
 from PyQt6.QtWidgets import QApplication, QWidget
 from qfluentwidgets import Theme, isDarkTheme, setTheme, setThemeColor
 
@@ -24,25 +24,25 @@ class FluentTokens:
 
 
 LIGHT_TOKENS = FluentTokens(
-    canvas="#F3F3F3",
+    canvas="#EEF5FB",
     surface="#FFFFFF",
-    surface_alt="#F9F9F9",
-    text_primary="#1B1B1B",
-    text_secondary="#5D5D5D",
-    stroke="#E1E1E1",
-    accent="#0078D4",
+    surface_alt="#E5F0FA",
+    text_primary="#17202A",
+    text_secondary="#4D6072",
+    stroke="#C9D9E8",
+    accent="#0F6CBD",
     success="#0F7B0F",
     warning="#9D5D00",
     danger="#C42B1C",
 )
 
 DARK_TOKENS = FluentTokens(
-    canvas="#202020",
-    surface="#2B2B2B",
-    surface_alt="#323232",
-    text_primary="#FFFFFF",
-    text_secondary="#C7C7C7",
-    stroke="#414141",
+    canvas="#101827",
+    surface="#182337",
+    surface_alt="#22324A",
+    text_primary="#F5F9FF",
+    text_secondary="#B9C8D9",
+    stroke="#3A4D66",
     accent="#60CDFF",
     success="#6CCB5F",
     warning="#FCE100",
@@ -59,9 +59,17 @@ def _to_theme(mode: str) -> Theme:
     return Theme.AUTO
 
 
-def current_tokens(accent: str | None = None) -> FluentTokens:
+def current_tokens(
+    accent: str | None = None,
+    mode: str | None = None,
+) -> FluentTokens:
     """Devuelve tokens resueltos para el tema efectivo."""
-    base = DARK_TOKENS if isDarkTheme() else LIGHT_TOKENS
+    normalized_mode = (mode or "").lower()
+    use_dark = (
+        normalized_mode == "dark"
+        or (normalized_mode not in {"light", "dark"} and isDarkTheme())
+    )
+    base = DARK_TOKENS if use_dark else LIGHT_TOKENS
     if not accent:
         return base
     return FluentTokens(
@@ -103,12 +111,207 @@ def apply_fluent_theme(config: AppConfig) -> FluentTokens:
     if app is not None:
         font = QFont(preferred_font_family(), max(9, config.get_font_size()))
         app.setFont(font)
-    return current_tokens(accent)
+    return current_tokens(accent, mode)
+
+
+def apply_fluent_palette(widget: QWidget, config: AppConfig) -> None:
+    """Fija la paleta de superficies para evitar fondos Acrylic neutros."""
+    tokens = current_tokens(
+        config.get_accent_color(),
+        config.get_theme_mode(),
+    )
+    palette = widget.palette()
+    for role, color in (
+        (QPalette.ColorRole.Window, tokens.canvas),
+        (QPalette.ColorRole.Base, tokens.surface),
+        (QPalette.ColorRole.AlternateBase, tokens.surface_alt),
+        (QPalette.ColorRole.Button, tokens.surface_alt),
+        (QPalette.ColorRole.ButtonText, tokens.text_primary),
+        (QPalette.ColorRole.Text, tokens.text_primary),
+        (QPalette.ColorRole.WindowText, tokens.text_primary),
+        (QPalette.ColorRole.Highlight, tokens.accent),
+        (QPalette.ColorRole.HighlightedText, "#FFFFFF"),
+        (QPalette.ColorRole.PlaceholderText, tokens.text_secondary),
+    ):
+        palette.setColor(role, QColor(color))
+    widget.setPalette(palette)
+    widget.setAutoFillBackground(True)
+
+
+def fluent_window_stylesheet(config: AppConfig) -> str:
+    """Estilos locales del shell V2, separados del QSS heredado."""
+    tokens = current_tokens(
+        config.get_accent_color(),
+        config.get_theme_mode(),
+    )
+    return f"""
+        QMainWindow#fluentAppWindow {{
+            background: {tokens.canvas};
+            background-color: {tokens.canvas};
+            color: {tokens.text_primary};
+        }}
+        QMainWindow#fluentAppWindow > QWidget {{
+            background-color: {tokens.canvas};
+        }}
+        QMainWindow#fluentAppWindow QScrollArea,
+        QMainWindow#fluentAppWindow StackedWidget,
+        QMainWindow#fluentAppWindow PopUpAniStackedWidget,
+        QMainWindow#fluentAppWindow QWidget > StackedWidget,
+        QMainWindow#fluentAppWindow QWidget#homePage,
+        QMainWindow#fluentAppWindow QWidget#activityPage,
+        QMainWindow#fluentAppWindow QWidget#settingsPage,
+        QMainWindow#fluentAppWindow QWidget#legacyContent {{
+            background: {tokens.canvas};
+            background-color: {tokens.canvas};
+            color: {tokens.text_primary};
+            border: none;
+        }}
+        QMainWindow#fluentAppWindow StackedWidget > QWidget,
+        QMainWindow#fluentAppWindow PopUpAniStackedWidget > QWidget {{
+            background: {tokens.canvas};
+            background-color: {tokens.canvas};
+        }}
+        QMainWindow#fluentAppWindow QScrollArea#homePage > QWidget,
+        QMainWindow#fluentAppWindow QScrollArea#settingsPage > QWidget,
+        QMainWindow#fluentAppWindow QScrollArea#activityPage > QWidget {{
+            background: {tokens.canvas};
+            background-color: {tokens.canvas};
+        }}
+        QMainWindow#fluentAppWindow QWidget#pageHeader {{
+            background: {tokens.surface_alt};
+            background-color: {tokens.surface_alt};
+            border: 1px solid {tokens.stroke};
+            border-radius: 12px;
+        }}
+        QMainWindow#fluentAppWindow QLabel,
+        QMainWindow#fluentAppWindow BodyLabel,
+        QMainWindow#fluentAppWindow CaptionLabel,
+        QMainWindow#fluentAppWindow SubtitleLabel,
+        QMainWindow#fluentAppWindow TitleLabel {{
+            color: {tokens.text_primary};
+        }}
+        QMainWindow#fluentAppWindow CardWidget,
+        QMainWindow#fluentAppWindow MetricCard,
+        QMainWindow#fluentAppWindow FeatureCard {{
+            background: {tokens.surface};
+            background-color: {tokens.surface};
+            border: 1px solid {tokens.stroke};
+            border-radius: 12px;
+        }}
+        QMainWindow#fluentAppWindow MetricCard {{
+            border-top: 3px solid {tokens.accent};
+        }}
+        QMainWindow#fluentAppWindow FeatureCard {{
+            border-left: 3px solid {tokens.accent};
+        }}
+        QMainWindow#fluentAppWindow CardWidget:hover,
+        QMainWindow#fluentAppWindow FeatureCard:hover {{
+            background: {tokens.surface_alt};
+            background-color: {tokens.surface_alt};
+            border-color: {tokens.accent};
+        }}
+        QMainWindow#fluentAppWindow LineEdit,
+        QMainWindow#fluentAppWindow ComboBox,
+        QMainWindow#fluentAppWindow TextEdit,
+        QMainWindow#fluentAppWindow SpinBox {{
+            background: {tokens.surface};
+            background-color: {tokens.surface};
+            color: {tokens.text_primary};
+            border: 1px solid {tokens.stroke};
+            border-radius: 7px;
+            selection-background-color: {tokens.accent};
+            selection-color: white;
+        }}
+        QMainWindow#fluentAppWindow LineEdit:focus,
+        QMainWindow#fluentAppWindow ComboBox:focus,
+        QMainWindow#fluentAppWindow TextEdit:focus,
+        QMainWindow#fluentAppWindow SpinBox:focus {{
+            border: 2px solid {tokens.accent};
+        }}
+        QMainWindow#fluentAppWindow PushButton {{
+            color: {tokens.text_primary};
+            background: {tokens.surface_alt};
+            background-color: {tokens.surface_alt};
+            border: 1px solid {tokens.stroke};
+            border-radius: 7px;
+            padding: 5px 12px;
+        }}
+        QMainWindow#fluentAppWindow PushButton:hover {{
+            background: {tokens.surface};
+            background-color: {tokens.surface};
+            border-color: {tokens.accent};
+        }}
+        QMainWindow#fluentAppWindow PrimaryPushButton {{
+            color: white;
+            background: {tokens.accent};
+            background-color: {tokens.accent};
+            border-color: {tokens.accent};
+        }}
+        QMainWindow#fluentAppWindow PrimaryPushButton:hover {{
+            background: {tokens.accent};
+            background-color: {tokens.accent};
+        }}
+        QMainWindow#fluentAppWindow NavigationInterface,
+        QMainWindow#fluentAppWindow NavigationPanel {{
+            background: {tokens.surface_alt};
+            background-color: {tokens.surface_alt};
+            border-right: 1px solid {tokens.stroke};
+        }}
+        QMainWindow#fluentAppWindow NavigationToolButton {{
+            color: {tokens.text_secondary};
+            border-radius: 8px;
+        }}
+        QMainWindow#fluentAppWindow NavigationToolButton:hover {{
+            color: {tokens.text_primary};
+            background: {tokens.surface_alt};
+            background-color: {tokens.surface_alt};
+        }}
+        QMainWindow#fluentAppWindow NavigationToolButton:checked {{
+            color: white;
+            background: {tokens.accent};
+            background-color: {tokens.accent};
+        }}
+        QMainWindow#fluentAppWindow QTableView,
+        QMainWindow#fluentAppWindow QTableWidget,
+        QMainWindow#fluentAppWindow QListWidget {{
+            background: {tokens.surface};
+            background-color: {tokens.surface};
+            color: {tokens.text_primary};
+            alternate-background-color: {tokens.surface_alt};
+            border: 1px solid {tokens.stroke};
+            gridline-color: {tokens.stroke};
+            selection-background-color: {tokens.accent};
+            selection-color: white;
+        }}
+        QMainWindow#fluentAppWindow QHeaderView::section {{
+            background: {tokens.surface_alt};
+            background-color: {tokens.surface_alt};
+            color: {tokens.text_primary};
+            border: none;
+            border-bottom: 1px solid {tokens.stroke};
+            padding: 6px 8px;
+        }}
+        QMainWindow#fluentAppWindow QProgressBar {{
+            background: {tokens.surface_alt};
+            background-color: {tokens.surface_alt};
+            border: none;
+            border-radius: 4px;
+            text-align: center;
+            color: {tokens.text_primary};
+        }}
+        QMainWindow#fluentAppWindow QProgressBar::chunk {{
+            background: {tokens.accent};
+            border-radius: 4px;
+        }}
+    """
 
 
 def legacy_surface_stylesheet(config: AppConfig) -> str:
     """QSS acotado para controles Qt heredados dentro de páginas V2."""
-    tokens = current_tokens(config.get_accent_color())
+    tokens = current_tokens(
+        config.get_accent_color(),
+        config.get_theme_mode(),
+    )
     compact = config.get_interface_density() == "compact"
     control_height = 28 if compact else 34
     row_height = 30 if compact else 38
