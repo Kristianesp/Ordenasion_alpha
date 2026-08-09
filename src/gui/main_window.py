@@ -446,8 +446,6 @@ class FileOrganizerGUI(QMainWindow):
         dl = QVBoxLayout(discs)
         dl.setContentsMargins(0, 0, 0, 0)
         self.disk_viewer = DiskViewer(disk_manager=None)
-        self.disk_viewer.tab_header.config_requested.connect(self.open_configuration)
-        self.disk_viewer.tab_header.tasks_requested.connect(self.open_task_center)
         self.disk_viewer.disk_selected.connect(self.on_disk_selected_for_organize)
         dl.addWidget(self.disk_viewer)
 
