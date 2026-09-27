@@ -10,6 +10,7 @@ import traceback
 from pathlib import Path
 from datetime import datetime
 from typing import Any, Optional, TYPE_CHECKING
+from src.utils.version import APP_VERSION
 
 if TYPE_CHECKING:
     from src.gui.splash_screen import ModernSplashScreen
@@ -129,7 +130,7 @@ sys.excepthook = excepthook
 try:
     with open(log_file, "w", encoding="utf-8") as f:
         f.write("=" * 80 + "\n")
-        f.write(f"ORGANIZADOR ALPHA v3.1.0_FIX - LOG DE INICIO\n")
+        f.write(f"ORDENASION v{APP_VERSION} - LOG DE INICIO\n")
         f.write(f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write("=" * 80 + "\n\n")
         f.flush()
@@ -225,7 +226,7 @@ def main():
         log_message("✅ QApplication creada")
 
         app.setApplicationName("Organizador de Archivos")
-        app.setApplicationVersion("3.1.0")
+        app.setApplicationVersion(APP_VERSION)
         log_message("✅ Nombre y versión configurados")
 
         # Configurar fuente por defecto
@@ -437,9 +438,9 @@ def main():
             # Cerrar splash con fade y mostrar ventana
             log_message("Cerrando splash con fade...")
             QTimer.singleShot(300, lambda: splash.finish_with_fade(window))
-            QTimer.singleShot(350, window.show)
+            QTimer.singleShot(350, window.show_maximized_safe)
         else:
-            window.show()
+            window.show_maximized_safe()
 
         log_message("✅ Ventana mostrada")
         log_message("Iniciando event loop de Qt...")

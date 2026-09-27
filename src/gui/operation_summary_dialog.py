@@ -3,8 +3,9 @@
 Resumen post-organización.
 """
 
-from PyQt6.QtWidgets import QDialog, QVBoxLayout
-from qfluentwidgets import PrimaryPushButton, TextEdit, TitleLabel
+from PyQt6.QtWidgets import QDialog, QTextEdit, QVBoxLayout
+from qfluentwidgets import PrimaryPushButton, TitleLabel
+from src.gui.v2.theme import apply_dialog_surface
 
 
 class OperationSummaryDialog(QDialog):
@@ -14,19 +15,22 @@ class OperationSummaryDialog(QDialog):
         super().__init__(parent)
         self.summary = summary or {}
         self.setWindowTitle("Resumen de organización")
+        self.setObjectName("operationSummaryDialog")
         self.resize(540, 420)
         self._build_ui()
+        apply_dialog_surface(self)
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
         layout.addWidget(TitleLabel("Resultado de la última ejecución"))
 
-        content = TextEdit()
+        content = QTextEdit()
         content.setReadOnly(True)
         content.setPlainText(
             "\n".join(
                 [
                     f"Carpetas movidas: {self.summary.get('folders_moved', 0)}",
+                    "Estado: deshecha" if self.summary.get("undone") else "Estado: resultado de la ejecución",
                     f"Archivos movidos: {self.summary.get('files_moved', 0)}",
                     f"Espacio reorganizado: {self._format_size(self.summary.get('bytes_reorganized', 0))}",
                     f"Duplicados omitidos: {self.summary.get('skipped_duplicates', 0)}",

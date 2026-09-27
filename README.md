@@ -2,7 +2,28 @@
 
 Aplicación de escritorio para Windows desarrollada en Python y PyQt6. Permite analizar, clasificar, organizar y revisar archivos desde una interfaz visual, con foco en seguridad operativa, vista previa antes de mover datos y herramientas adicionales para discos, duplicados y biblioteca musical.
 
-Versión actual publicada: `v3.1.0_FIX`
+Versión: **3.5.0**
+
+## Novedades de 3.5.0
+
+1. Inicio compacto con métricas reales, donut de ocupación y distribución del
+   último análisis de espacio; sin series ni cifras de demostración.
+2. Interfaz Fluent Ocean Frost, tema global animado y configuración compacta con
+   selector de color, validación y guardado fiable.
+3. Organización guiada con revisión y confirmación única, conflictos explícitos,
+   selección conservada y Deshacer según el estado real.
+4. Discos con estados de salud honestos y nuevo Uso del espacio: análisis manual,
+   mapa/tabla, navegación, top20 y cancelación cooperativa.
+5. Música centrada en biblioteca/reproducción, herramientas avanzadas bajo
+   demanda y ventanas de metadatos/portadas con tema coherente.
+6. Duplicados con candidatos, copia conservada y destino de retirada explícitos;
+   Actividad prioriza progreso y resultados sobre el log técnico.
+7. Splash e icono propios, fuentes incluidas y lanzador BAT con `--comprobar`.
+8. EXE Windows Fluent 3.5.0 con assets/licencias y smoke aislado; no lleva la
+   configuración ni los perfiles personales del workspace.
+
+Consulta [CHANGELOG.md](CHANGELOG.md) para el detalle y
+[la guía de compilación](releases_tags_creacion_exes.md) para generar el EXE.
 
 ## Funcionalidades Principales
 
@@ -23,11 +44,11 @@ Versión actual publicada: `v3.1.0_FIX`
 
 La versión compilada se publica como ejecutable de Windows en GitHub Releases:
 
-`https://github.com/Kristianesp/Ordenasion_alpha/releases/tag/v3.1.0_FIX`
+[Release 3.5.0](https://github.com/Kristianesp/Ordenasion_alpha/releases/tag/v3.5.0)
 
 Asset principal:
 
-`OrganizadorAlpha_v3.1.0_FIX.exe`
+[Descargar Ordenasion_v3.5.0.exe](https://github.com/Kristianesp/Ordenasion_alpha/releases/download/v3.5.0/Ordenasion_v3.5.0.exe)
 
 ## Pestañas de la Aplicación
 
@@ -91,13 +112,14 @@ Modos disponibles:
 
 - rápido: agrupa por tamaño, nombre normalizado y extensión,
 - híbrido: usa filtro rápido y confirma sospechosos con hash,
-- profundo: compara por hash completo.
+- profundo: compara por hash; los archivos muy grandes pueden usar muestreo y
+  siguen requiriendo revisión antes de retirarlos.
 
 También incluye acciones sobre resultados, vista de grupos, apertura de ubicación y gestión segura según el flujo disponible en la interfaz.
 
-### Log
+### Actividad
 
-Registro operativo de la sesión.
+Progreso y resultados de la sesión, con el registro técnico desplegable.
 
 Permite:
 
@@ -150,6 +172,8 @@ El borrado seguro usa papelera mediante `send2trash` cuando está instalado. Si 
 
 ## Configuración
 
+Los valores iniciales de configuración, perfiles y categorías proceden del código.
+Los archivos locales se crean al guardar y no se incluyen en Git ni en el EXE.
 La configuración se guarda principalmente en:
 
 - `app_config.json`
@@ -194,33 +218,36 @@ Dependencias opcionales comentadas en `requirements.txt` permiten ampliar detecc
 
 ## Ejecución Desde Código
 
+En Windows puedes ejecutar `arrancar_ordenasion.bat`; `--comprobar` valida el
+entrypoint y sus dependencias sin abrir la GUI ni escribir configuración.
 Punto de entrada recomendado:
 
 ```bash
-python main_optimized.py
+venv\Scripts\python.exe main_fluent.py
 ```
 
 También puede existir compatibilidad con otros entrypoints históricos según la rama o versión del proyecto.
 
 ## Compilación del EXE
 
-La compilación se realiza con PyInstaller y la spec optimizada incluida:
+Usa Python 3.12 x64, instala `requirements.txt` y `requirements-build.txt` en el
+venv y compila la spec incluida (entrada `main_fluent.py`, onefile):
 
 ```powershell
-python -m PyInstaller --clean --noconfirm OrganizadorAlpha_OPTIMIZED.spec
+venv\Scripts\python.exe -m PyInstaller --clean --noconfirm --distpath artifacts/release-v3.5.0/dist --workpath artifacts/release-v3.5.0/build OrganizadorAlpha_OPTIMIZED.spec
 ```
 
 Salida esperada:
 
 ```text
-dist/OrganizadorAlpha_v3.1.0_FIX.exe
+artifacts/release-v3.5.0/dist/Ordenasion_v3.5.0.exe
 ```
 
 ## Estructura del Proyecto
 
 ```text
 .
-├── main_optimized.py
+├── main_fluent.py
 ├── OrganizadorAlpha_OPTIMIZED.spec
 ├── requirements.txt
 ├── README.md
@@ -317,7 +344,7 @@ Algunas métricas dependen del dispositivo, del controlador y de que `smartctl` 
 
 ## Estado del Proyecto
 
-Ordenasion Alpha está orientado a uso local en Windows. La versión `v3.1.0_FIX` incorpora correcciones importantes en el flujo de vista previa, resolución de conflictos antes de organizar, refresco automático tras mover archivos y una pestaña musical avanzada.
+Ordenasion Alpha está orientado a uso local en Windows. La versión `v3.5.0` incorpora correcciones importantes en el flujo de vista previa, resolución de conflictos antes de organizar, refresco automático tras mover archivos y una pestaña musical avanzada.
 
 ## Licencia
 

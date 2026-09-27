@@ -19,7 +19,7 @@ from PyQt6.QtGui import QColor
 from qfluentwidgets import CheckBox, ComboBox, PrimaryPushButton, PushButton
 
 from src.utils.app_config import AppConfig
-from src.gui.v2.theme import apply_fluent_theme
+from src.gui.v2.theme import apply_dialog_surface, current_tokens
 from src.core.organization_conflicts import (
     CONFLICT_POLICY_OVERWRITE,
     CONFLICT_POLICY_RENAME,
@@ -52,8 +52,9 @@ class PreviewDialog(QDialog):
         self._setup_ui()
     
     def _setup_ui(self):
-        self.setWindowTitle("Vista Previa de Organizacion")
-        self.setMinimumSize(900, 600)
+        self.setWindowTitle("Revisar y organizar")
+        self.resize(900, 600)
+        self.setMinimumSize(640, 440)
         self.setModal(True)
         
         layout = QVBoxLayout(self)
@@ -123,6 +124,7 @@ class PreviewDialog(QDialog):
         self.preview_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         self.preview_table.setAlternatingRowColors(True)
         self.preview_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.preview_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         
         # Llenar tabla
         self._refresh_preview()
@@ -143,7 +145,7 @@ class PreviewDialog(QDialog):
         
         btn_layout.addStretch()
         
-        self.confirm_btn = PrimaryPushButton("Organizar Ahora")
+        self.confirm_btn = PrimaryPushButton("Confirmar y organizar")
         self.confirm_btn.setEnabled(False)
         self.confirm_btn.clicked.connect(self.accept)
         btn_layout.addWidget(self.confirm_btn)
@@ -168,16 +170,20 @@ class PreviewDialog(QDialog):
             self.preview_table.setItem(row_index, 3, QTableWidgetItem(row_data["destination_path"]))
             status_item = QTableWidgetItem(row_data["status"])
             if row_data["status"] != "Sin conflicto":
-                status_item.setForeground(QColor("#c62828"))
+                status_item.setForeground(QColor(current_tokens().warning))
             self.preview_table.setItem(row_index, 4, status_item)
 
     def _refresh_summary(self):
         total_items = len(self.folder_movements) + len(self.file_movements)
         conflict_count = sum(1 for row in self.preview_rows if row["status"] != "Sin conflicto")
+        skipped = sum(row["status"] == "Se omitirá por conflicto" for row in self.preview_rows)
         self.summary_label.setText(
-            f"Se organizarán {total_items} elementos · {len(self.folder_movements)} carpetas · {len(self.file_movements)} archivos\n"
+            f"Selección: {total_items} elementos · {len(self.folder_movements)} carpetas · {len(self.file_movements)} archivos\n"
+            f"Previstos para mover: {total_items - skipped} · Omitidos por conflicto: {skipped}\n"
             f"Destino(s): {len({row['destination_label'] for row in self.preview_rows})} · Conflictos detectados: {conflict_count}\n"
-            f"Carpeta origen: {self.folder_path or 'No especificada'}"
+            f"Carpeta origen: {self.folder_path or 'No especificada'}\n"
+            + ("Se comprobarán duplicados durante la operación y se omitirán las copias detectadas."
+               if self.check_duplicates else "La detección de duplicados está desactivada.")
         )
 
     def _refresh_preview(self, *_args):
@@ -203,6 +209,7 @@ class PreviewDialog(QDialog):
 
     def _build_preview_rows(self):
         rows = []
+        reserved = set()
         for mov in self.folder_movements:
             base_destination = build_base_destination(
                 self.folder_path,
@@ -214,7 +221,9 @@ class PreviewDialog(QDialog):
                 base_destination,
                 conflict_policy=self.conflict_policy,
                 is_folder=True,
+                reserved=reserved,
             )
+            reserved.add(resolved.destination)
             rows.append(
                 {
                     "type": "Carpeta",
@@ -236,7 +245,10 @@ class PreviewDialog(QDialog):
                 base_destination,
                 conflict_policy=self.conflict_policy,
                 is_folder=False,
+                reserved=reserved,
             )
+            if resolved.action != "skip":
+                reserved.add(resolved.destination)
             rows.append(
                 {
                     "type": "Archivo",
@@ -249,6 +261,8 @@ class PreviewDialog(QDialog):
         return rows
 
     def _apply_theme(self):
-        app_config = AppConfig()
-        apply_fluent_theme(app_config)
         self.setObjectName("fluentPreviewDialog")
+        tokens = apply_dialog_surface(self)
+        for row, data in enumerate(self.preview_rows):
+            if data["status"] != "Sin conflicto":
+                self.preview_table.item(row, 4).setForeground(QColor(tokens.warning))
